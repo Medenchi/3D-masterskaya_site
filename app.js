@@ -313,3 +313,109 @@ async function finishFromDetails(printerId) {
     tg.showAlert("Ошибка завершения");
   }
 }
+// ============================================================
+// LOAD USER MODELS
+// ============================================================
+
+async function loadModels() {
+  setActiveTab(2);
+  content.innerHTML = `<div class="empty">Загрузка моделей…</div>`;
+
+  try {
+    const models = await api("/models");
+
+    if (!models.length) {
+      content.innerHTML = `
+        <div class="empty fade-in">
+          <h2>📦 Нет моделей</h2>
+          <p>Загрузи STL через бота</p>
+        </div>
+      `;
+      return;
+    }
+
+    content.innerHTML = "";
+    models.forEach(renderModelCard);
+
+  } catch {
+    content.innerHTML = `<div class="empty">Ошибка загрузки</div>`;
+  }
+}
+function renderModelCard(model) {
+  const card = document.createElement("div");
+  card.className = "card fade-in";
+
+  card.innerHTML = `
+    <div class="card-title">${model.item_name}</div>
+    <div class="card-subtitle">
+      ⏱ ~${model.estimated_time} ч
+    </div>
+
+    <button class="button"
+      onclick="choosePrinterForModel(${model.id})">
+      ➕ В очередь
+    </button>
+  `;
+
+  content.appendChild(card);
+}
+async function choosePrinterForModel(modelId) {
+  try {
+    const printers = await api("/printers");
+
+    const freePrinters = printers.filter(
+      p => p.status === "FREE"
+    );
+
+    if (!freePrinters.length) {
+      tg.showAlert("Нет свободных принтеров");
+      return;
+    }
+
+    content.innerHTML = `
+      <div class="empty fade-in">
+        <h2>🖨 Выбери принтер</h2>
+      </div>
+    `;
+
+    freePrinters.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      card.innerHTML = `
+        <div class="card-title">${p.name}</div>
+        <div class="card-subtitle">
+          ${p.brand} ${p.model_name}
+        </div>
+
+        <button class="button"
+          onclick="addToQueue(${p.id}, ${modelId})">
+          ▶️ Поставить в очередь
+        </button>
+      `;
+
+      content.appendChild(card);
+    });
+
+  } catch {
+    tg.showAlert("Ошибка загрузки принтеров");
+  }
+        }
+function renderModelCard(model) {
+  const card = document.createElement("div");
+  card.className = "card fade-in";
+
+  card.innerHTML = `
+    <div class="card-title">${model.item_name}</div>
+    <div class="card-subtitle">
+      ⏱ ~${model.estimated_time} ч
+    </div>
+
+    <button class="button"
+      onclick="choosePrinterForModel(${model.id})">
+      ➕ В очередь
+    </button>
+  `;
+
+  content.appendChild(card);
+}
