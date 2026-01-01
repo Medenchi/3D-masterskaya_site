@@ -217,3 +217,99 @@ function setActiveTab(index) {
       btn.classList.toggle("active", i === index);
     });
 }
+// ============================================================
+// PRINTER DETAILS VIEW
+// ============================================================
+
+function openPrinterDetails(printer) {
+  content.innerHTML = `
+    <div class="card fade-in">
+      <div class="card-header">
+        <img class="card-image"
+             src="${printer.image_url || 'https://placehold.co/300x300'}" />
+
+        <div>
+          <div class="card-title">${printer.name}</div>
+          <div class="card-subtitle">
+            ${printer.brand} ${printer.model_name}
+          </div>
+        </div>
+      </div>
+
+      <div class="status ${printer.status.toLowerCase()}">
+        ${statusLabel(printer.status)}
+      </div>
+
+      ${printer.status === "BUSY" ? detailedProgress(printer) : ""}
+
+      <div style="margin-top:16px">
+        ${detailsButtons(printer)}
+      </div>
+    </div>
+
+    <button class="button secondary"
+      onclick="loadPrinters()">
+      ⬅️ Назад к ферме
+    </button>
+  `;
+}
+function detailedProgress(printer) {
+  // MVP: фейковый прогресс (потом можно реальный)
+  const percent = 40;
+
+  return `
+    <div class="progress" style="margin-top:16px">
+      <div class="progress-inner" style="width:${percent}%"></div>
+    </div>
+
+    <div style="margin-top:8px; font-size:14px; color:var(--tg-hint)">
+      ⏱ Печать выполняется…
+    </div>
+  `;
+}
+function detailsButtons(printer) {
+  switch (printer.status) {
+    case "FREE":
+      return `
+        <button class="button"
+          onclick="tg.showAlert('Запуск печати — через бота')">
+          ▶️ Начать печать
+        </button>
+      `;
+
+    case "BUSY":
+      return `
+        <button class="button"
+          onclick="finishFromDetails(${printer.id})">
+          ✅ Завершить печать
+        </button>
+
+        <button class="button secondary"
+          onclick="tg.showAlert('Пауза — через бота')">
+          ⏸ Пауза
+        </button>
+      `;
+
+    case "REPAIR":
+      return `
+        <button class="button"
+          onclick="tg.showAlert('Снятие с ремонта — через бота')">
+          🔧 С ремонта
+        </button>
+      `;
+
+    default:
+      return "";
+  }
+}
+async function finishFromDetails(printerId) {
+  try {
+    await api(`/printers/finish?printer_id=${printerId}`, {
+      method: "POST"
+    });
+    tg.showAlert("Печать завершена");
+    loadPrinters();
+  } catch {
+    tg.showAlert("Ошибка завершения");
+  }
+}
