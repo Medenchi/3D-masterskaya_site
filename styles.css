@@ -1,0 +1,233 @@
+/* ============================================================
+   PRINTFARM MINI APP — TELEGRAM MODERN UI
+   ============================================================ */
+
+/* ---------- Telegram theme vars ---------- */
+:root {
+  --tg-bg: var(--tg-theme-bg-color, #f4f5f7);
+  --tg-card: var(--tg-theme-secondary-bg-color, #ffffff);
+  --tg-text: var(--tg-theme-text-color, #000000);
+  --tg-hint: var(--tg-theme-hint-color, #8e8e93);
+  --tg-link: var(--tg-theme-link-color, #2ea6ff);
+  --tg-accent: var(--tg-theme-button-color, #2ea6ff);
+
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+
+  --shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+/* ---------- Reset ---------- */
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--tg-bg);
+  font-family: -apple-system, BlinkMacSystemFont,
+               "SF Pro Text", "Inter", sans-serif;
+  color: var(--tg-text);
+}
+
+/* ---------- App container ---------- */
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Header ---------- */
+.header {
+  padding: 20px 18px 14px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+
+#user-status {
+  font-size: 13px;
+  color: var(--tg-hint);
+}
+
+/* ---------- Main content ---------- */
+#content {
+  flex: 1;
+  padding: 14px;
+  padding-bottom: 90px; /* space for bottom nav */
+}
+
+/* ---------- Cards ---------- */
+.card {
+  background: var(--tg-card);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:active {
+  transform: scale(0.98);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.card-image {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-md);
+  background: #e5e7eb;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.card-subtitle {
+  font-size: 14px;
+  color: var(--tg-hint);
+  margin-top: 4px;
+}
+
+/* ---------- Status pills ---------- */
+.status {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+.status.free {
+  background: #e7f7ee;
+  color: #1e7f43;
+}
+
+.status.busy {
+  background: #e8f1ff;
+  color: #1d4ed8;
+}
+
+.status.repair {
+  background: #fdecec;
+  color: #b42318;
+}
+
+.status.paused {
+  background: #fff4d6;
+  color: #8a6100;
+}
+
+/* ---------- Progress bar ---------- */
+.progress {
+  margin-top: 10px;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.progress-inner {
+  height: 100%;
+  width: 0%;
+  background: var(--tg-accent);
+  transition: width 0.3s ease;
+}
+
+/* ---------- Buttons ---------- */
+.button {
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button.secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.button:active {
+  transform: scale(0.98);
+}
+
+/* ---------- Bottom navigation ---------- */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  background: var(--tg-card);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  box-shadow: var(--shadow-soft);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+}
+
+.bottom-nav button {
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tg-hint);
+}
+
+.bottom-nav button.active {
+  color: var(--tg-accent);
+}
+
+/* ---------- Empty states ---------- */
+.empty {
+  text-align: center;
+  color: var(--tg-hint);
+  padding: 40px 20px;
+}
+
+.empty h2 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+/* ---------- Animations ---------- */
+.fade-in {
+  animation: fadeIn 0.25s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
