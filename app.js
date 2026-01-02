@@ -4,13 +4,25 @@
 // =====================================================
 
 const tg = window.Telegram.WebApp;
-tg.expand();
+tg.ready();
 
-// 🔴 ОБЯЗАТЕЛЬНО ЗАМЕНИ
-const API_BASE = "https://YOUR_BACKEND_DOMAIN";
+const initData = tg.initData;
 
-const content = document.getElementById("content");
-const userStatus = document.getElementById("user-status");
+fetch("http://localhost:8000/auth/telegram", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    initData: initData
+  })
+})
+.then(res => res.json())
+.then(user => {
+  console.log("Авторизован как:", user);
+  // user.telegram_id
+  // user.plan
+});
 
 // -----------------------------------------------------
 // INIT
