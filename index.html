@@ -1,34 +1,24 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>PrintFarm</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Telegram Mini App API -->
+  <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
   <div id="app">
-    <header class="header">
-      <h1>🖨 PrintFarm</h1>
-      <span id="user-status"></span>
-    </header>
-
-    <main id="content">
-      <!-- динамика -->
-    </main>
-
-    <nav class="bottom-nav">
-      <button onclick="loadPrinters()">Ферма</button>
-      <button onclick="loadQueue()">Очередь</button>
-      <button onclick="loadModels()">Модели</button>
-    </nav>
+    <div class="screen center">
+      <div class="spinner"></div>
+      <div class="muted mt12">Загрузка…</div>
+    </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
+</html>
 </html>
