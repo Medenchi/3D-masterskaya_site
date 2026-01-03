@@ -1,12 +1,237 @@
-/**
- * PrintFarm Mini App
- * Telegram Mini App for 3D Print Farm Management
- */
-
 // ===================== CONFIGURATION =====================
 
-const API_BASE = "relative-joyce-3dprintable-b0155a87.koyeb.app"; // Replace with your backend URL
+const API_BASE = "https://relative-joyce-3dprintable-b0155a87.koyeb.app"; // Replace with your backend URL
 const USE_MOCK = false; // Set to false in production
+
+// ===================== ICON DRAWING =====================
+
+const IconDrawer = {
+    colors: {
+        primary: '#2481cc',
+        success: '#4caf50',
+        warning: '#ffc107',
+        danger: '#f44336',
+        busy: '#2196f3',
+        gray: '#999999',
+        white: '#ffffff',
+        dark: '#333333'
+    },
+
+    drawPrinter(ctx, x, y, size, color = null) {
+        const c = color || this.colors.primary;
+        ctx.strokeStyle = c;
+        ctx.fillStyle = c;
+        ctx.lineWidth = 2;
+        
+        // Frame
+        ctx.strokeRect(x + 2, y + size * 0.3, size - 4, size * 0.65);
+        // Build plate
+        ctx.fillRect(x + 4, y + size * 0.55, size - 8, 3);
+        // Extruder
+        ctx.fillRect(x + size * 0.35, y + size * 0.25, size * 0.3, size * 0.15);
+        // Gantry
+        ctx.beginPath();
+        ctx.moveTo(x + 4, y + size * 0.3);
+        ctx.lineTo(x + size - 4, y + size * 0.3);
+        ctx.stroke();
+    },
+
+    drawModel(ctx, x, y, size, color = null) {
+        const c = color || this.colors.primary;
+        const half = size / 2;
+        
+        // 3D cube
+        ctx.fillStyle = c;
+        ctx.beginPath();
+        ctx.moveTo(x + half * 0.5, y + half);
+        ctx.lineTo(x + size - half * 0.5, y + half);
+        ctx.lineTo(x + size - half * 0.5, y + size);
+        ctx.lineTo(x + half * 0.5, y + size);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Top face (lighter)
+        ctx.fillStyle = this.lighten(c, 30);
+        ctx.beginPath();
+        ctx.moveTo(x + half * 0.5, y + half);
+        ctx.lineTo(x + half, y + half * 0.4);
+        ctx.lineTo(x + size, y + half * 0.4);
+        ctx.lineTo(x + size - half * 0.5, y + half);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Right face (darker)
+        ctx.fillStyle = this.darken(c, 30);
+        ctx.beginPath();
+        ctx.moveTo(x + size - half * 0.5, y + half);
+        ctx.lineTo(x + size, y + half * 0.4);
+        ctx.lineTo(x + size, y + size - half * 0.5);
+        ctx.lineTo(x + size - half * 0.5, y + size);
+        ctx.closePath();
+        ctx.fill();
+    },
+
+    drawStatusFree(ctx, x, y, size) {
+        ctx.fillStyle = this.colors.success;
+        ctx.beginPath();
+        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Checkmark
+        ctx.strokeStyle = this.colors.white;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + size * 0.25, y + size * 0.5);
+        ctx.lineTo(x + size * 0.4, y + size * 0.7);
+        ctx.lineTo(x + size * 0.75, y + size * 0.3);
+        ctx.stroke();
+    },
+
+    drawStatusBusy(ctx, x, y, size) {
+        ctx.fillStyle = this.colors.busy;
+        ctx.beginPath();
+        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Play icon
+        ctx.fillStyle = this.colors.white;
+        ctx.beginPath();
+        ctx.moveTo(x + size * 0.35, y + size * 0.25);
+        ctx.lineTo(x + size * 0.75, y + size * 0.5);
+        ctx.lineTo(x + size * 0.35, y + size * 0.75);
+        ctx.closePath();
+        ctx.fill();
+    },
+
+    drawStatusPaused(ctx, x, y, size) {
+        ctx.fillStyle = this.colors.warning;
+        ctx.beginPath();
+        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Pause bars
+        ctx.fillStyle = this.colors.dark;
+        ctx.fillRect(x + size * 0.3, y + size * 0.25, size * 0.15, size * 0.5);
+        ctx.fillRect(x + size * 0.55, y + size * 0.25, size * 0.15, size * 0.5);
+    },
+
+    drawStatusRepair(ctx, x, y, size) {
+        ctx.fillStyle = this.colors.danger;
+        ctx.beginPath();
+        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Wrench
+        ctx.strokeStyle = this.colors.white;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + size * 0.3, y + size * 0.3, size * 0.15, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + size * 0.4, y + size * 0.4);
+        ctx.lineTo(x + size * 0.7, y + size * 0.7);
+        ctx.stroke();
+    },
+
+    drawRuler(ctx, x, y, size) {
+        ctx.strokeStyle = this.colors.gray;
+        ctx.fillStyle = this.colors.gray;
+        ctx.lineWidth = 1.5;
+        
+        // Ruler body
+        ctx.strokeRect(x, y + size * 0.35, size, size * 0.3);
+        // Tick marks
+        for (let i = 0; i <= 4; i++) {
+            const tx = x + (size * i) / 4;
+            ctx.beginPath();
+            ctx.moveTo(tx, y + size * 0.35);
+            ctx.lineTo(tx, y + size * 0.5);
+            ctx.stroke();
+        }
+    },
+
+    drawClock(ctx, x, y, size) {
+        ctx.strokeStyle = this.colors.gray;
+        ctx.lineWidth = 1.5;
+        
+        // Circle
+        ctx.beginPath();
+        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Hands
+        const cx = x + size/2;
+        const cy = y + size/2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx, cy - size * 0.3);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + size * 0.2, cy);
+        ctx.stroke();
+    },
+
+    drawBrandIcon(ctx, x, y, size, brand) {
+        const brandColors = {
+            'Creality': '#009688',
+            'Anycubic': '#2196f3',
+            'Prusa': '#ff9800',
+            'Bambu Lab': '#4caf50',
+            'Voron': '#9c27b0',
+            'Elegoo': '#f44336',
+            'Artillery': '#ff5722',
+            'QIDI': '#3f51b5',
+            'Flashforge': '#00bcd4'
+        };
+        
+        const color = brandColors[brand] || '#666666';
+        
+        // Rounded rectangle background
+        ctx.fillStyle = color;
+        this.roundRect(ctx, x, y, size, size, size * 0.2);
+        ctx.fill();
+        
+        // Brand initial
+        ctx.fillStyle = this.colors.white;
+        ctx.font = `bold ${size * 0.5}px -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(brand[0].toUpperCase(), x + size/2, y + size/2);
+    },
+
+    roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    },
+
+    lighten(color, percent) {
+        const num = parseInt(color.replace('#', ''), 16);
+        const amt = Math.round(2.55 * percent);
+        const R = Math.min(255, (num >> 16) + amt);
+        const G = Math.min(255, ((num >> 8) & 0x00FF) + amt);
+        const B = Math.min(255, (num & 0x0000FF) + amt);
+        return `rgb(${R}, ${G}, ${B})`;
+    },
+
+    darken(color, percent) {
+        const num = parseInt(color.replace('#', ''), 16);
+        const amt = Math.round(2.55 * percent);
+        const R = Math.max(0, (num >> 16) - amt);
+        const G = Math.max(0, ((num >> 8) & 0x00FF) - amt);
+        const B = Math.max(0, (num & 0x0000FF) - amt);
+        return `rgb(${R}, ${G}, ${B})`;
+    }
+};
 
 // ===================== MOCK DATA =====================
 
@@ -113,7 +338,7 @@ let state = {
     printers: [],
     models: [],
     currentTab: 'printers',
-    sortOrder: 'small', // 'small' or 'large'
+    sortOrder: 'small',
     isLoading: true
 };
 
@@ -126,7 +351,6 @@ function initTelegram() {
         tg.ready();
         tg.expand();
         
-        // Apply theme
         document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
         document.documentElement.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#000000');
         document.documentElement.style.setProperty('--tg-theme-hint-color', tg.themeParams.hint_color || '#999999');
@@ -141,7 +365,7 @@ function initTelegram() {
 
 async function fetchBootstrap() {
     if (USE_MOCK) {
-        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network
+        await new Promise(resolve => setTimeout(resolve, 500));
         return MOCK_DATA;
     }
     
@@ -163,7 +387,6 @@ async function printerAction(printerId, action) {
     if (USE_MOCK) {
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Update mock state
         const printer = state.printers.find(p => p.id === printerId);
         if (printer) {
             switch (action) {
@@ -206,21 +429,6 @@ async function printerAction(printerId, action) {
 
 // ===================== UTILS =====================
 
-function getBrandEmoji(brand) {
-    const emojis = {
-        'Creality': '🟢',
-        'Anycubic': '🔵',
-        'Prusa': '🟠',
-        'Bambu Lab': '🟤',
-        'Voron': '🟣',
-        'Elegoo': '🔴',
-        'Artillery': '🟡',
-        'QIDI': '⚫',
-        'Flashforge': '🔷'
-    };
-    return emojis[brand] || '⬜';
-}
-
 function getStatusText(status) {
     const texts = {
         'FREE': 'Свободен',
@@ -236,7 +444,7 @@ function calculateProgress(lastStart, durationHours) {
     
     const startTime = new Date(lastStart).getTime();
     const now = Date.now();
-    const elapsed = (now - startTime) / (1000 * 60 * 60); // hours
+    const elapsed = (now - startTime) / (1000 * 60 * 60);
     const progress = Math.min(100, (elapsed / durationHours) * 100);
     
     return Math.round(progress * 10) / 10;
@@ -247,7 +455,7 @@ function formatTimeLeft(lastStart, durationHours) {
     
     const startTime = new Date(lastStart).getTime();
     const now = Date.now();
-    const elapsed = (now - startTime) / (1000 * 60 * 60); // hours
+    const elapsed = (now - startTime) / (1000 * 60 * 60);
     const remaining = Math.max(0, durationHours - elapsed);
     
     if (remaining >= 1) {
@@ -261,7 +469,7 @@ function formatTimeLeft(lastStart, durationHours) {
 
 function formatSize(x, y, z) {
     if (!x || !y || !z) return null;
-    return `${Math.round(x)}×${Math.round(y)}×${Math.round(z)}`;
+    return `${Math.round(x)}x${Math.round(y)}x${Math.round(z)}`;
 }
 
 function formatTime(hours) {
@@ -287,13 +495,74 @@ function sortModels(models, order) {
         const volA = (a.size_x || 0) * (a.size_y || 0) * (a.size_z || 0);
         const volB = (b.size_x || 0) * (b.size_y || 0) * (b.size_z || 0);
         
-        // Models without size go to the end
         if (volA === 0 && volB === 0) return 0;
         if (volA === 0) return 1;
         if (volB === 0) return -1;
         
         return order === 'small' ? volA - volB : volB - volA;
     });
+}
+
+// ===================== ICON INITIALIZATION =====================
+
+function initIcons() {
+    // Header icon
+    const headerCanvas = document.getElementById('header-icon');
+    if (headerCanvas) {
+        const ctx = headerCanvas.getContext('2d');
+        IconDrawer.drawPrinter(ctx, 2, 2, 28, '#ffffff');
+    }
+    
+    // Stat icons
+    document.querySelectorAll('.stat-icon').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const icon = canvas.dataset.icon;
+        switch(icon) {
+            case 'total':
+                IconDrawer.drawPrinter(ctx, 2, 2, 20, IconDrawer.colors.gray);
+                break;
+            case 'busy':
+                IconDrawer.drawStatusBusy(ctx, 2, 2, 20);
+                break;
+            case 'free':
+                IconDrawer.drawStatusFree(ctx, 2, 2, 20);
+                break;
+            case 'models':
+                IconDrawer.drawModel(ctx, 2, 2, 20, IconDrawer.colors.primary);
+                break;
+        }
+    });
+    
+    // Tab icons
+    document.querySelectorAll('.tab-icon-canvas').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const icon = canvas.dataset.icon;
+        if (icon === 'printer') {
+            IconDrawer.drawPrinter(ctx, 0, 0, 20, IconDrawer.colors.gray);
+        } else if (icon === 'model') {
+            IconDrawer.drawModel(ctx, 0, 0, 20, IconDrawer.colors.gray);
+        }
+    });
+    
+    // Sort icon
+    const sortCanvas = document.getElementById('sort-icon-canvas');
+    if (sortCanvas) {
+        const ctx = sortCanvas.getContext('2d');
+        IconDrawer.drawRuler(ctx, 0, 0, 16);
+    }
+    
+    // Empty state icons
+    const emptyPrinter = document.getElementById('empty-printer-icon');
+    if (emptyPrinter) {
+        const ctx = emptyPrinter.getContext('2d');
+        IconDrawer.drawPrinter(ctx, 8, 8, 48, IconDrawer.colors.gray);
+    }
+    
+    const emptyModel = document.getElementById('empty-model-icon');
+    if (emptyModel) {
+        const ctx = emptyModel.getContext('2d');
+        IconDrawer.drawModel(ctx, 8, 8, 48, IconDrawer.colors.gray);
+    }
 }
 
 // ===================== RENDER =====================
@@ -338,17 +607,17 @@ function renderPrinters() {
     
     emptyState.classList.add('hidden');
     
-    container.innerHTML = sortedPrinters.map(printer => {
+    container.innerHTML = sortedPrinters.map((printer, index) => {
         const progress = calculateProgress(printer.last_start, printer.duration_hours);
         const timeLeft = formatTimeLeft(printer.last_start, printer.duration_hours);
-        const bedSize = `${printer.bed_x}×${printer.bed_y}×${printer.bed_z}`;
+        const bedSize = `${printer.bed_x}x${printer.bed_y}x${printer.bed_z}`;
         
         let progressHtml = '';
         if ((printer.status === 'BUSY' || printer.status === 'PAUSED') && printer.current_item_name) {
             progressHtml = `
                 <div class="print-progress">
                     <div class="print-model-name">
-                        <span>🖨️</span>
+                        <canvas class="inline-icon" data-draw="printer-small" width="16" height="16"></canvas>
                         <span>${escapeHtml(printer.current_item_name)}</span>
                     </div>
                     <div class="progress-bar">
@@ -365,16 +634,14 @@ function renderPrinters() {
         return `
             <div class="printer-card" data-printer-id="${printer.id}">
                 <div class="printer-header">
-                    <div class="printer-icon">
-                        ${printer.image_url 
-                            ? `<img src="${printer.image_url}" alt="${printer.brand}">`
-                            : getBrandEmoji(printer.brand)
-                        }
-                    </div>
+                    <canvas class="printer-brand-icon" data-brand="${printer.brand}" width="48" height="48"></canvas>
                     <div class="printer-info">
                         <div class="printer-name">${escapeHtml(printer.name)}</div>
                         <div class="printer-model">${escapeHtml(printer.brand)} ${escapeHtml(printer.model_name)}</div>
-                        <div class="printer-bed">📐 ${bedSize} мм</div>
+                        <div class="printer-bed">
+                            <canvas class="inline-icon" data-draw="ruler" width="14" height="14"></canvas>
+                            ${bedSize} мм
+                        </div>
                     </div>
                     <div class="status-badge ${printer.status.toLowerCase()}">${getStatusText(printer.status)}</div>
                 </div>
@@ -382,6 +649,24 @@ function renderPrinters() {
             </div>
         `;
     }).join('');
+    
+    // Draw brand icons
+    container.querySelectorAll('.printer-brand-icon').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const brand = canvas.dataset.brand;
+        IconDrawer.drawBrandIcon(ctx, 0, 0, 48, brand);
+    });
+    
+    // Draw inline icons
+    container.querySelectorAll('.inline-icon').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const draw = canvas.dataset.draw;
+        if (draw === 'printer-small') {
+            IconDrawer.drawPrinter(ctx, 0, 0, 16, IconDrawer.colors.busy);
+        } else if (draw === 'ruler') {
+            IconDrawer.drawRuler(ctx, 0, 0, 14);
+        }
+    });
     
     // Add click handlers
     container.querySelectorAll('.printer-card').forEach(card => {
@@ -413,18 +698,35 @@ function renderModels() {
         return `
             <div class="model-card" data-model-id="${model.id}">
                 <div class="model-header">
-                    <div class="model-icon">📦</div>
+                    <canvas class="model-icon-canvas" width="40" height="40"></canvas>
                     <div class="model-info">
                         <div class="model-name">${escapeHtml(model.item_name)}</div>
                         <div class="model-details">
-                            ${size ? `<span class="model-detail">📐 ${size} мм</span>` : ''}
-                            <span class="model-detail">⏱️ ${time}</span>
+                            ${size ? `<span class="model-detail"><canvas class="micro-icon" data-draw="ruler" width="12" height="12"></canvas> ${size} мм</span>` : ''}
+                            <span class="model-detail"><canvas class="micro-icon" data-draw="clock" width="12" height="12"></canvas> ${time}</span>
                         </div>
                     </div>
                 </div>
             </div>
         `;
     }).join('');
+    
+    // Draw model icons
+    container.querySelectorAll('.model-icon-canvas').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        IconDrawer.drawModel(ctx, 4, 4, 32, IconDrawer.colors.primary);
+    });
+    
+    // Draw micro icons
+    container.querySelectorAll('.micro-icon').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const draw = canvas.dataset.draw;
+        if (draw === 'ruler') {
+            IconDrawer.drawRuler(ctx, 0, 0, 12);
+        } else if (draw === 'clock') {
+            IconDrawer.drawClock(ctx, 0, 0, 12);
+        }
+    });
 }
 
 function escapeHtml(text) {
@@ -445,7 +747,7 @@ function showPrinterSheet(printerId) {
     
     const progress = calculateProgress(printer.last_start, printer.duration_hours);
     const timeLeft = formatTimeLeft(printer.last_start, printer.duration_hours);
-    const bedSize = `${printer.bed_x}×${printer.bed_y}×${printer.bed_z}`;
+    const bedSize = `${printer.bed_x}x${printer.bed_y}x${printer.bed_z}`;
     
     let progressHtml = '';
     if ((printer.status === 'BUSY' || printer.status === 'PAUSED') && printer.current_item_name) {
@@ -468,34 +770,34 @@ function showPrinterSheet(printerId) {
         case 'FREE':
             actionsHtml = `
                 <button class="sheet-btn sheet-btn-danger" data-action="repair">
-                    <span>🔧</span> На ремонт
+                    <canvas class="btn-icon" data-draw="repair" width="18" height="18"></canvas> На ремонт
                 </button>
             `;
             break;
         case 'BUSY':
             actionsHtml = `
                 <button class="sheet-btn sheet-btn-warning" data-action="pause">
-                    <span>⏸️</span> Пауза
+                    <canvas class="btn-icon" data-draw="pause" width="18" height="18"></canvas> Пауза
                 </button>
                 <button class="sheet-btn sheet-btn-success" data-action="finish">
-                    <span>✅</span> Завершить печать
+                    <canvas class="btn-icon" data-draw="finish" width="18" height="18"></canvas> Завершить печать
                 </button>
             `;
             break;
         case 'PAUSED':
             actionsHtml = `
                 <button class="sheet-btn sheet-btn-primary" data-action="resume">
-                    <span>▶️</span> Продолжить
+                    <canvas class="btn-icon" data-draw="resume" width="18" height="18"></canvas> Продолжить
                 </button>
                 <button class="sheet-btn sheet-btn-success" data-action="finish">
-                    <span>✅</span> Завершить печать
+                    <canvas class="btn-icon" data-draw="finish" width="18" height="18"></canvas> Завершить печать
                 </button>
             `;
             break;
         case 'REPAIR':
             actionsHtml = `
                 <button class="sheet-btn sheet-btn-success" data-action="repair_done">
-                    <span>✅</span> Снять с ремонта
+                    <canvas class="btn-icon" data-draw="finish" width="18" height="18"></canvas> Снять с ремонта
                 </button>
             `;
             break;
@@ -503,7 +805,7 @@ function showPrinterSheet(printerId) {
     
     body.innerHTML = `
         <div class="sheet-header">
-            <div class="sheet-icon">${getBrandEmoji(printer.brand)}</div>
+            <canvas class="sheet-brand-icon" data-brand="${printer.brand}" width="56" height="56"></canvas>
             <div>
                 <div class="sheet-title">${escapeHtml(printer.name)}</div>
                 <div class="sheet-subtitle">${escapeHtml(printer.brand)} ${escapeHtml(printer.model_name)}</div>
@@ -526,10 +828,38 @@ function showPrinterSheet(printerId) {
         <div class="sheet-actions">
             ${actionsHtml}
             <button class="sheet-btn sheet-btn-secondary" data-action="close">
-                <span>✕</span> Закрыть
+                Закрыть
             </button>
         </div>
     `;
+    
+    // Draw brand icon
+    const brandCanvas = body.querySelector('.sheet-brand-icon');
+    if (brandCanvas) {
+        const ctx = brandCanvas.getContext('2d');
+        IconDrawer.drawBrandIcon(ctx, 0, 0, 56, printer.brand);
+    }
+    
+    // Draw button icons
+    body.querySelectorAll('.btn-icon').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const draw = canvas.dataset.draw;
+        ctx.clearRect(0, 0, 18, 18);
+        switch(draw) {
+            case 'pause':
+                IconDrawer.drawStatusPaused(ctx, 0, 0, 18);
+                break;
+            case 'resume':
+                IconDrawer.drawStatusBusy(ctx, 0, 0, 18);
+                break;
+            case 'finish':
+                IconDrawer.drawStatusFree(ctx, 0, 0, 18);
+                break;
+            case 'repair':
+                IconDrawer.drawStatusRepair(ctx, 0, 0, 18);
+                break;
+        }
+    });
     
     // Add action handlers
     body.querySelectorAll('[data-action]').forEach(btn => {
@@ -577,11 +907,11 @@ function hideSheet() {
 
 function getActionMessage(action) {
     const messages = {
-        'pause': '⏸️ Печать приостановлена',
-        'resume': '▶️ Печать продолжена',
-        'finish': '✅ Печать завершена',
-        'repair': '🔧 Отправлен на ремонт',
-        'repair_done': '✅ Ремонт завершён'
+        'pause': 'Печать приостановлена',
+        'resume': 'Печать продолжена',
+        'finish': 'Печать завершена',
+        'repair': 'Отправлен на ремонт',
+        'repair_done': 'Ремонт завершён'
     };
     return messages[action] || 'Готово';
 }
@@ -611,11 +941,9 @@ function initTabs() {
         tab.addEventListener('click', () => {
             const tabName = tab.dataset.tab;
             
-            // Update tab buttons
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             
-            // Update content
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.getElementById(`${tabName}-tab`).classList.add('active');
             
@@ -627,6 +955,11 @@ function initTabs() {
 function initSortToggle() {
     const btn = document.getElementById('sort-btn');
     const text = document.getElementById('sort-text');
+    
+    if (!btn || !text) {
+        console.warn('Sort toggle elements not found');
+        return;
+    }
     
     btn.addEventListener('click', () => {
         state.sortOrder = state.sortOrder === 'small' ? 'large' : 'small';
@@ -680,20 +1013,20 @@ function startAutoRefresh() {
                 console.error('Refresh error:', error);
             }
         }
-    }, 30000); // 30 seconds
+    }, 30000);
 }
 
 // ===================== INIT =====================
 
 document.addEventListener('DOMContentLoaded', () => {
     initTelegram();
+    initIcons();
     initTabs();
     initSortToggle();
     loadData();
     startAutoRefresh();
 });
 
-// Handle visibility change
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
         loadData();
