@@ -1,166 +1,1893 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>PrintFarm</title>
-    <link rel="stylesheet" href="styles.css">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        /* ============================================
+           PrintFarm Mini App - Telegram Native 2026
+           Version: 2.6.7
+           Developer: @denchy
+           ============================================ */
+
+        :root {
+            --bg-primary: #f1f2f6;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e8e9ed;
+            --text-primary: #1c1c1e;
+            --text-secondary: #8e8e93;
+            --text-tertiary: #c7c7cc;
+            --accent: #007aff;
+            --accent-light: rgba(0, 122, 255, 0.1);
+            --success: #34c759;
+            --warning: #ff9500;
+            --danger: #ff3b30;
+            --separator: rgba(60, 60, 67, 0.12);
+            --card-shadow: none;
+            --blur-bg: rgba(255, 255, 255, 0.85);
+            --tab-bar-height: 83px;
+            --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        .theme-dark {
+            --bg-primary: #000000;
+            --bg-secondary: #1c1c1e;
+            --bg-tertiary: #2c2c2e;
+            --text-primary: #ffffff;
+            --text-secondary: #8e8e93;
+            --text-tertiary: #48484a;
+            --separator: rgba(84, 84, 88, 0.65);
+            --blur-bg: rgba(28, 28, 30, 0.85);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, 'SF Pro Display', 'SF Pro Text', system-ui, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ============================================
+           MAIN CONTAINER
+           ============================================ */
+
+        .app-container {
+            padding-bottom: calc(var(--tab-bar-height) + var(--safe-area-bottom));
+            min-height: 100vh;
+        }
+
+        .screen {
+            display: none;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ============================================
+           HEADER
+           ============================================ */
+
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--blur-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 12px 16px;
+            border-bottom: 0.5px solid var(--separator);
+        }
+
+        .header-title {
+            font-size: 17px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .header-large {
+            padding: 16px 16px 12px;
+            background: transparent;
+            backdrop-filter: none;
+            border-bottom: none;
+        }
+
+        .header-large .header-title {
+            font-size: 34px;
+            font-weight: 700;
+            text-align: left;
+        }
+
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* ============================================
+           CARDS & SECTIONS
+           ============================================ */
+
+        .section {
+            margin: 20px 16px;
+        }
+
+        .section-header {
+            font-size: 13px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: -0.08px;
+            padding: 0 16px 8px;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .card-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            min-height: 44px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .card-item:active {
+            background: var(--bg-tertiary);
+        }
+
+        .card-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 56px;
+            right: 0;
+            height: 0.5px;
+            background: var(--separator);
+        }
+
+        .card-item.no-icon:not(:last-child)::after {
+            left: 16px;
+        }
+
+        /* ============================================
+           ICONS (SVG Generated)
+           ============================================ */
+
+        .icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .icon svg {
+            width: 16px;
+            height: 16px;
+            fill: white;
+        }
+
+        .icon-printer { background: linear-gradient(135deg, #5856d6, #af52de); }
+        .icon-model { background: linear-gradient(135deg, #ff9500, #ff3b30); }
+        .icon-queue { background: linear-gradient(135deg, #34c759, #30d158); }
+        .icon-profile { background: linear-gradient(135deg, #007aff, #5ac8fa); }
+        .icon-settings { background: linear-gradient(135deg, #8e8e93, #636366); }
+
+        /* ============================================
+           PRINTER CARD
+           ============================================ */
+
+        .printer-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .printer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .printer-info h3 {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .printer-info p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .status-badge {
+            font-size: 12px;
+            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .status-free {
+            background: rgba(52, 199, 89, 0.15);
+            color: var(--success);
+        }
+
+        .status-busy {
+            background: rgba(0, 122, 255, 0.15);
+            color: var(--accent);
+        }
+
+        .status-paused {
+            background: rgba(255, 149, 0, 0.15);
+            color: var(--warning);
+        }
+
+        .status-repair {
+            background: rgba(255, 59, 48, 0.15);
+            color: var(--danger);
+        }
+
+        .printer-stats {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .printer-stat {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .printer-stat span {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .progress-container {
+            margin-top: 12px;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* ============================================
+           MODEL CARD
+           ============================================ */
+
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 0 16px;
+        }
+
+        .model-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .model-card:active {
+            transform: scale(0.98);
+        }
+
+        .model-preview {
+            width: 100%;
+            aspect-ratio: 1;
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .model-preview svg {
+            width: 48px;
+            height: 48px;
+            fill: var(--text-tertiary);
+        }
+
+        .model-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .model-info {
+            padding: 12px;
+        }
+
+        .model-info h4 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .model-info p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* ============================================
+           FILTER BUTTON & POPOVER
+           ============================================ */
+
+        .filter-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--bg-tertiary);
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .filter-btn:active {
+            background: var(--separator);
+        }
+
+        .filter-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: var(--text-primary);
+        }
+
+        .popover-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+        }
+
+        .popover-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .popover {
+            position: absolute;
+            top: 60px;
+            right: 16px;
+            background: var(--bg-secondary);
+            border-radius: 14px;
+            min-width: 200px;
+            overflow: hidden;
+            transform: scale(0.9) translateY(-10px);
+            opacity: 0;
+            transition: all 0.2s ease;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .popover-overlay.active .popover {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+        }
+
+        .popover-item {
+            padding: 12px 16px;
+            font-size: 17px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.15s ease;
+        }
+
+        .popover-item:active {
+            background: var(--bg-tertiary);
+        }
+
+        .popover-item:not(:last-child) {
+            border-bottom: 0.5px solid var(--separator);
+        }
+
+        .popover-item.selected::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23007aff'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E") center/contain no-repeat;
+        }
+
+        /* ============================================
+           ACTION SHEET
+           ============================================ */
+
+        .action-sheet-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .action-sheet-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .action-sheet {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: transparent;
+            z-index: 1001;
+            padding: 0 8px calc(8px + var(--safe-area-bottom));
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .action-sheet-overlay.active .action-sheet {
+            transform: translateY(0);
+        }
+
+        .action-sheet-content {
+            background: var(--bg-secondary);
+            border-radius: 14px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .action-sheet-header {
+            padding: 16px;
+            text-align: center;
+            border-bottom: 0.5px solid var(--separator);
+        }
+
+        .action-sheet-header h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .action-sheet-header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .action-sheet-item {
+            padding: 18px 16px;
+            font-size: 20px;
+            text-align: center;
+            cursor: pointer;
+            color: var(--accent);
+            border-bottom: 0.5px solid var(--separator);
+            transition: background 0.15s ease;
+        }
+
+        .action-sheet-item:last-child {
+            border-bottom: none;
+        }
+
+        .action-sheet-item:active {
+            background: var(--bg-tertiary);
+        }
+
+        .action-sheet-item.danger {
+            color: var(--danger);
+        }
+
+        .action-sheet-cancel {
+            background: var(--bg-secondary);
+            border-radius: 14px;
+            padding: 18px 16px;
+            font-size: 20px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            color: var(--accent);
+        }
+
+        .action-sheet-cancel:active {
+            background: var(--bg-tertiary);
+        }
+
+        /* ============================================
+           PROFILE SCREEN
+           ============================================ */
+
+        .profile-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px 16px;
+        }
+
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            margin-bottom: 16px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .profile-avatar svg {
+            width: 48px;
+            height: 48px;
+            fill: var(--text-tertiary);
+        }
+
+        .profile-name {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .profile-id {
+            font-size: 15px;
+            color: var(--text-secondary);
+        }
+
+        .subscription-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 16px;
+            margin: 0 16px 20px;
+        }
+
+        .subscription-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .subscription-plan {
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .subscription-badge {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .subscription-limits {
+            margin-bottom: 16px;
+        }
+
+        .limit-item {
+            margin-bottom: 12px;
+        }
+
+        .limit-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .limit-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .limit-name {
+            color: var(--text-secondary);
+        }
+
+        .limit-value {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .limit-bar {
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .limit-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+        }
+
+        .limit-fill.warning {
+            background: var(--warning);
+        }
+
+        .limit-fill.danger {
+            background: var(--danger);
+        }
+
+        .subscription-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s ease;
+        }
+
+        .subscription-btn:active {
+            opacity: 0.8;
+        }
+
+        .profile-footer {
+            text-align: center;
+            padding: 24px 16px;
+            color: var(--text-tertiary);
+            font-size: 13px;
+        }
+
+        .profile-footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .profile-footer p {
+            margin-bottom: 8px;
+        }
+
+        /* ============================================
+           ORDERS SCREEN
+           ============================================ */
+
+        .order-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 16px;
+            margin: 0 16px 12px;
+        }
+
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .order-number {
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .order-date {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .order-items {
+            margin-bottom: 12px;
+        }
+
+        .order-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+        }
+
+        .order-item:not(:last-child) {
+            border-bottom: 0.5px solid var(--separator);
+        }
+
+        .order-item-preview {
+            width: 44px;
+            height: 44px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-right: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .order-item-preview svg {
+            width: 24px;
+            height: 24px;
+            fill: var(--text-tertiary);
+        }
+
+        .order-item-info {
+            flex: 1;
+        }
+
+        .order-item-name {
+            font-size: 15px;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .order-item-details {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .order-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .order-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .order-status-dot.pending {
+            background: var(--warning);
+        }
+
+        .order-status-dot.printing {
+            background: var(--accent);
+        }
+
+        .order-status-dot.done {
+            background: var(--success);
+        }
+
+        /* ============================================
+           TAB BAR
+           ============================================ */
+
+        .tab-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: var(--tab-bar-height);
+            background: var(--blur-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 0.5px solid var(--separator);
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-start;
+            padding-top: 8px;
+            padding-bottom: var(--safe-area-bottom);
+            z-index: 500;
+        }
+
+        .tab-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 16px;
+            cursor: pointer;
+            transition: opacity 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .tab-item svg {
+            width: 28px;
+            height: 28px;
+            fill: var(--text-secondary);
+            margin-bottom: 4px;
+            transition: fill 0.15s ease;
+        }
+
+        .tab-item span {
+            font-size: 10px;
+            color: var(--text-secondary);
+            transition: color 0.15s ease;
+        }
+
+        .tab-item.active svg {
+            fill: var(--accent);
+        }
+
+        .tab-item.active span {
+            color: var(--accent);
+        }
+
+        .tab-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            margin-bottom: 4px;
+            overflow: hidden;
+            border: 2px solid transparent;
+            transition: border-color 0.15s ease;
+        }
+
+        .tab-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .tab-item.active .tab-avatar {
+            border-color: var(--accent);
+        }
+
+        /* ============================================
+           EMPTY STATE
+           ============================================ */
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 32px;
+            text-align: center;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            fill: var(--text-tertiary);
+            margin-bottom: 24px;
+        }
+
+        .empty-state h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            font-size: 15px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        /* ============================================
+           ERROR STATE
+           ============================================ */
+
+        .error-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 32px;
+            text-align: center;
+            min-height: 60vh;
+        }
+
+        .error-state svg {
+            width: 64px;
+            height: 64px;
+            fill: var(--danger);
+            margin-bottom: 24px;
+        }
+
+        .error-state h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .error-state p {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .retry-btn {
+            padding: 12px 32px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .retry-btn:active {
+            opacity: 0.8;
+        }
+
+        /* ============================================
+           LOADING
+           ============================================ */
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--bg-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            transition: opacity 0.3s ease;
+        }
+
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--bg-tertiary);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ============================================
+           SCROLL BEHAVIOR
+           ============================================ */
+
+        .scroll-content {
+            padding: 0 0 20px;
+        }
+
+        /* ============================================
+           UTILITIES
+           ============================================ */
+
+        .hidden {
+            display: none !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .mt-12 {
+            margin-top: 12px;
+        }
+
+        .mb-12 {
+            margin-bottom: 12px;
+        }
+
+        .px-16 {
+            padding-left: 16px;
+            padding-right: 16px;
+        }
+
+    </style>
 </head>
 <body>
-    <div id="app">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-title">PrintFarm</div>
-            <button class="header-btn" id="filter-btn">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>
-                </svg>
-            </button>
-        </header>
-
-        <!-- Filter Popover -->
-        <div class="popover hidden" id="filter-popover">
-            <div class="popover-item" data-sort="free">Free first</div>
-            <div class="popover-item" data-sort="busy">Busy first</div>
-            <div class="popover-item" data-sort="fast">Fast prints</div>
-            <div class="popover-item" data-sort="slow">Slow prints</div>
-            <div class="popover-item" data-sort="name">By name</div>
-        </div>
-
-        <!-- Content -->
-        <main class="content">
-            <!-- Printers Tab -->
-            <div id="printers-tab" class="tab-content active">
-                <div class="section-header">
-                    <span class="section-title">Printers</span>
-                    <span class="section-count" id="printers-count">0</span>
-                </div>
-                <div class="card-group" id="printers-list"></div>
-                <div class="empty-state hidden" id="printers-empty">
-                    <div class="empty-icon" id="empty-printers-icon"></div>
-                    <div class="empty-text">No printers yet</div>
-                    <div class="empty-hint">Add via bot</div>
-                </div>
-            </div>
-
-            <!-- Models Tab -->
-            <div id="models-tab" class="tab-content">
-                <div class="section-header">
-                    <span class="section-title">Models</span>
-                    <span class="section-count" id="models-count">0</span>
-                </div>
-                <div class="card-group" id="models-list"></div>
-                <div class="empty-state hidden" id="models-empty">
-                    <div class="empty-icon" id="empty-models-icon"></div>
-                    <div class="empty-text">No models yet</div>
-                    <div class="empty-hint">Upload STL/G-code via bot</div>
-                </div>
-            </div>
-
-            <!-- Orders Tab -->
-            <div id="orders-tab" class="tab-content">
-                <div class="section-header">
-                    <span class="section-title">Orders</span>
-                    <span class="section-count" id="orders-count">0</span>
-                </div>
-                <div class="card-group" id="orders-list"></div>
-                <div class="empty-state hidden" id="orders-empty">
-                    <div class="empty-icon" id="empty-orders-icon"></div>
-                    <div class="empty-text">No orders yet</div>
-                    <div class="empty-hint">Create via bot</div>
-                </div>
-            </div>
-
-            <!-- Profile Tab -->
-            <div id="profile-tab" class="tab-content">
-                <div class="profile-header">
-                    <div class="profile-avatar" id="profile-avatar"></div>
-                    <div class="profile-name" id="profile-name">User</div>
-                    <div class="profile-id" id="profile-id">ID: 0</div>
-                </div>
-
-                <div class="card-group">
-                    <div class="settings-card">
-                        <div class="settings-header">Subscription</div>
-                        <div class="settings-row">
-                            <span class="settings-label">Plan</span>
-                            <span class="settings-value plan-badge" id="profile-plan">FREE</span>
-                        </div>
-                        <div class="settings-row">
-                            <span class="settings-label">Printers</span>
-                            <div class="limit-bar">
-                                <div class="limit-fill" id="limit-fill"></div>
-                            </div>
-                            <span class="settings-value" id="limit-text">0/1</span>
-                        </div>
-                    </div>
-
-                    <div class="settings-card">
-                        <div class="settings-header">Statistics</div>
-                        <div class="settings-row">
-                            <span class="settings-label">Total print time</span>
-                            <span class="settings-value" id="stat-time">0h</span>
-                        </div>
-                        <div class="settings-row">
-                            <span class="settings-label">Filament used</span>
-                            <span class="settings-value" id="stat-filament">0m</span>
-                        </div>
-                        <div class="settings-row">
-                            <span class="settings-label">Top printer</span>
-                            <span class="settings-value" id="stat-top">-</span>
-                        </div>
-                    </div>
-
-                    <button class="settings-btn" id="manage-sub-btn">Manage Subscription</button>
-                </div>
-
-                <div class="footer">
-                    <div class="footer-text">Version 2.6.7</div>
-                    <div class="footer-text">Developer: @nicrocky</div>
-                    <a class="footer-link" href="https://t.me/nicrocky" target="_blank">Support Project</a>
-                </div>
-            </div>
-        </main>
-
-        <!-- Bottom Sheet -->
-        <div class="sheet hidden" id="sheet">
-            <div class="sheet-overlay"></div>
-            <div class="sheet-content">
-                <div class="sheet-handle"></div>
-                <div class="sheet-body" id="sheet-body"></div>
-            </div>
-        </div>
-
-        <!-- Tab Bar -->
-        <nav class="tabbar">
-            <button class="tabbar-item active" data-tab="printers">
-                <div class="tabbar-icon" id="tab-icon-printers"></div>
-                <span class="tabbar-label">Printers</span>
-            </button>
-            <button class="tabbar-item" data-tab="models">
-                <div class="tabbar-icon" id="tab-icon-models"></div>
-                <span class="tabbar-label">Models</span>
-            </button>
-            <button class="tabbar-item" data-tab="orders">
-                <div class="tabbar-icon" id="tab-icon-orders"></div>
-                <span class="tabbar-label">Orders</span>
-            </button>
-            <button class="tabbar-item" data-tab="profile">
-                <div class="tabbar-icon tabbar-avatar" id="tab-avatar"></div>
-                <span class="tabbar-label">Profile</span>
-            </button>
-        </nav>
-
-        <!-- Loading -->
-        <div class="loading" id="loading">
-            <div class="loading-spinner"></div>
-        </div>
-
-        <!-- Toast -->
-        <div class="toast hidden" id="toast"></div>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Main App Container -->
+    <div class="app-container" id="appContainer">
+
+        <!-- ============================================
+             PRINTERS SCREEN
+             ============================================ -->
+        <div class="screen active" id="screenPrinters">
+            <div class="header header-large">
+                <div class="header-actions">
+                    <div class="header-title">Принтеры</div>
+                    <button class="filter-btn" onclick="openFilter()">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="scroll-content" id="printersList">
+                <!-- Printers will be loaded here -->
+            </div>
+        </div>
+
+        <!-- ============================================
+             MODELS SCREEN
+             ============================================ -->
+        <div class="screen" id="screenModels">
+            <div class="header header-large">
+                <div class="header-title">Модели</div>
+            </div>
+            <div class="scroll-content">
+                <div class="models-grid" id="modelsList">
+                    <!-- Models will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================
+             ORDERS SCREEN
+             ============================================ -->
+        <div class="screen" id="screenOrders">
+            <div class="header header-large">
+                <div class="header-title">Заказы</div>
+            </div>
+            <div class="scroll-content" id="ordersList">
+                <!-- Orders will be loaded here -->
+            </div>
+        </div>
+
+        <!-- ============================================
+             PROFILE SCREEN
+             ============================================ -->
+        <div class="screen" id="screenProfile">
+            <div class="header header-large">
+                <div class="header-title">Профиль</div>
+            </div>
+            <div class="scroll-content">
+                <div class="profile-header">
+                    <div class="profile-avatar" id="profileAvatar">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                    </div>
+                    <div class="profile-name" id="profileName">Пользователь</div>
+                    <div class="profile-id" id="profileId">ID: 000000000</div>
+                </div>
+
+                <div class="subscription-card">
+                    <div class="subscription-header">
+                        <div class="subscription-plan">Текущий план</div>
+                        <div class="subscription-badge" id="planBadge">FREE</div>
+                    </div>
+                    <div class="subscription-limits">
+                        <div class="limit-item">
+                            <div class="limit-header">
+                                <span class="limit-name">Принтеры</span>
+                                <span class="limit-value" id="limitPrinters">2 / 3</span>
+                            </div>
+                            <div class="limit-bar">
+                                <div class="limit-fill" id="limitPrintersFill" style="width: 66%"></div>
+                            </div>
+                        </div>
+                        <div class="limit-item">
+                            <div class="limit-header">
+                                <span class="limit-name">Модели</span>
+                                <span class="limit-value" id="limitModels">8 / 10</span>
+                            </div>
+                            <div class="limit-bar">
+                                <div class="limit-fill warning" id="limitModelsFill" style="width: 80%"></div>
+                            </div>
+                        </div>
+                        <div class="limit-item">
+                            <div class="limit-header">
+                                <span class="limit-name">Печатей в месяц</span>
+                                <span class="limit-value" id="limitPrints">45 / 50</span>
+                            </div>
+                            <div class="limit-bar">
+                                <div class="limit-fill danger" id="limitPrintsFill" style="width: 90%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="subscription-btn" onclick="manageSubscription()">
+                        Управлять подпиской
+                    </button>
+                </div>
+
+                <div class="section">
+                    <div class="card">
+                        <div class="card-item" onclick="openSettings()">
+                            <div class="icon icon-settings">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                                </svg>
+                            </div>
+                            <span style="flex:1">Настройки</span>
+                            <svg width="8" height="14" fill="none" stroke="var(--text-tertiary)" stroke-width="2">
+                                <path d="M1 1l6 6-6 6"/>
+                            </svg>
+                        </div>
+                        <div class="card-item" onclick="openHelp()">
+                            <div class="icon" style="background: linear-gradient(135deg, #5ac8fa, #007aff);">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
+                                </svg>
+                            </div>
+                            <span style="flex:1">Помощь</span>
+                            <svg width="8" height="14" fill="none" stroke="var(--text-tertiary)" stroke-width="2">
+                                <path d="M1 1l6 6-6 6"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="profile-footer">
+                    <p>Версия 2.6.7</p>
+                    <p>Разработчик: <a href="https://t.me/denchy" target="_blank">@denchy</a></p>
+                    <p style="margin-top: 16px;">
+                        <a href="https://t.me/denchy" target="_blank">Поддержать проект (Донат)</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================
+             ERROR SCREEN
+             ============================================ -->
+        <div class="screen" id="screenError">
+            <div class="error-state">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                </svg>
+                <h3>Ошибка соединения</h3>
+                <p>Не удалось подключиться к серверу. Проверьте интернет-соединение.</p>
+                <button class="retry-btn" onclick="retryConnection()">Повторить</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Tab Bar -->
+    <nav class="tab-bar" id="tabBar">
+        <div class="tab-item active" data-tab="printers" onclick="switchTab('printers')">
+            <svg viewBox="0 0 24 24">
+                <path d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 14H8v-4h8v4zm2-4v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z"/>
+                <circle cx="18" cy="11.5" r="1"/>
+            </svg>
+            <span>Принтеры</span>
+        </div>
+        <div class="tab-item" data-tab="models" onclick="switchTab('models')">
+            <svg viewBox="0 0 24 24">
+                <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
+            </svg>
+            <span>Модели</span>
+        </div>
+        <div class="tab-item" data-tab="orders" onclick="switchTab('orders')">
+            <svg viewBox="0 0 24 24">
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+            </svg>
+            <span>Заказы</span>
+        </div>
+        <div class="tab-item" data-tab="profile" onclick="switchTab('profile')">
+            <div class="tab-avatar" id="tabAvatar">
+                <img src="" alt="" style="display: none;">
+            </div>
+            <span>Профиль</span>
+        </div>
+    </nav>
+
+    <!-- Filter Popover -->
+    <div class="popover-overlay" id="filterOverlay" onclick="closeFilter()">
+        <div class="popover" onclick="event.stopPropagation()">
+            <div class="popover-item" data-filter="free" onclick="applyFilter('free')">
+                Сначала свободные
+            </div>
+            <div class="popover-item" data-filter="busy" onclick="applyFilter('busy')">
+                Сначала занятые
+            </div>
+            <div class="popover-item" data-filter="time" onclick="applyFilter('time')">
+                По времени
+            </div>
+            <div class="popover-item selected" data-filter="name" onclick="applyFilter('name')">
+                По имени
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Sheet -->
+    <div class="action-sheet-overlay" id="actionSheetOverlay" onclick="closeActionSheet()">
+        <div class="action-sheet" onclick="event.stopPropagation()">
+            <div class="action-sheet-content">
+                <div class="action-sheet-header">
+                    <h3 id="actionSheetTitle">Принтер</h3>
+                    <p id="actionSheetSubtitle">Выберите действие</p>
+                </div>
+                <div id="actionSheetActions">
+                    <!-- Actions will be inserted here -->
+                </div>
+            </div>
+            <div class="action-sheet-cancel" onclick="closeActionSheet()">Отмена</div>
+        </div>
+    </div>
+
+    <script>
+        /* ============================================
+           PrintFarm Mini App - JavaScript
+           Version: 2.6.7
+           Developer: @denchy
+           ============================================ */
+
+        // ============================================
+        // CONFIGURATION
+        // ============================================
+
+        const API_BASE = 'https://relative-joyce-3dprintable-b0155a87.koyeb.app/';
+        const APP_VERSION = '2.6.7';
+
+        // ============================================
+        // TELEGRAM WEB APP
+        // ============================================
+
+        const tg = window.Telegram?.WebApp;
+        let userData = null;
+        let appData = {
+            printers: [],
+            models: [],
+            orders: [],
+            user: null,
+            subscription: null
+        };
+        let currentFilter = 'name';
+        let selectedPrinter = null;
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initApp();
+        });
+
+        async function initApp() {
+            // Initialize Telegram Web App
+            if (tg) {
+                tg.ready();
+                tg.expand();
+                applyTheme();
+                tg.onEvent('themeChanged', applyTheme);
+            }
+
+            // Load user data
+            extractUserData();
+            
+            // Load data from API
+            await loadBootstrapData();
+
+            // Hide loading
+            setTimeout(() => {
+                document.getElementById('loadingOverlay').classList.add('hidden');
+            }, 500);
+        }
+
+        function applyTheme() {
+            if (tg?.colorScheme === 'dark') {
+                document.body.classList.add('theme-dark');
+            } else {
+                document.body.classList.remove('theme-dark');
+            }
+
+            // Apply Telegram theme colors
+            const root = document.documentElement;
+            if (tg?.themeParams) {
+                const tp = tg.themeParams;
+                if (tp.bg_color) root.style.setProperty('--bg-primary', tp.bg_color);
+                if (tp.secondary_bg_color) root.style.setProperty('--bg-secondary', tp.secondary_bg_color);
+                if (tp.text_color) root.style.setProperty('--text-primary', tp.text_color);
+                if (tp.hint_color) root.style.setProperty('--text-secondary', tp.hint_color);
+                if (tp.link_color) root.style.setProperty('--accent', tp.link_color);
+            }
+        }
+
+        function extractUserData() {
+            if (tg?.initDataUnsafe?.user) {
+                userData = tg.initDataUnsafe.user;
+                updateUserUI();
+            } else {
+                // Demo mode
+                userData = {
+                    id: 123456789,
+                    first_name: 'Демо',
+                    last_name: 'Пользователь',
+                    username: 'demo_user',
+                    photo_url: null
+                };
+                updateUserUI();
+            }
+        }
+
+        function updateUserUI() {
+            // Profile
+            const fullName = [userData.first_name, userData.last_name].filter(Boolean).join(' ');
+            document.getElementById('profileName').textContent = fullName || 'Пользователь';
+            document.getElementById('profileId').textContent = `ID: ${userData.id}`;
+
+            // Avatars
+            if (userData.photo_url) {
+                document.getElementById('profileAvatar').innerHTML = 
+                    `<img src="${userData.photo_url}" alt="">`;
+                const tabAvatarImg = document.querySelector('#tabAvatar img');
+                tabAvatarImg.src = userData.photo_url;
+                tabAvatarImg.style.display = 'block';
+            }
+        }
+
+        // ============================================
+        // API FUNCTIONS
+        // ============================================
+
+        async function loadBootstrapData() {
+            try {
+                const response = await fetch(`${API_BASE}/bootstrap`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        initData: tg?.initData || '',
+                        user_id: userData?.id
+                    })
+                });
+
+                if (!response.ok) throw new Error('API Error');
+
+                const data = await response.json();
+                appData = { ...appData, ...data };
+                
+                renderPrinters();
+                renderModels();
+                renderOrders();
+                updateSubscriptionUI();
+
+            } catch (error) {
+                console.error('Bootstrap error:', error);
+                // Use demo data
+                loadDemoData();
+            }
+        }
+
+        function loadDemoData() {
+            appData = {
+                printers: [
+                    { id: 1, name: 'Ender 3 Pro', brand: 'Creality', status: 'FREE', bed_x: 220, bed_y: 220, bed_z: 250, current_task: null, progress: 0 },
+                    { id: 2, name: 'Prusa MK3S+', brand: 'Prusa', status: 'BUSY', bed_x: 250, bed_y: 210, bed_z: 210, current_task: 'Benchy.stl', progress: 67, time_left: '1ч 23м' },
+                    { id: 3, name: 'Anycubic Vyper', brand: 'Anycubic', status: 'PAUSED', bed_x: 245, bed_y: 245, bed_z: 260, current_task: 'Phone_stand.stl', progress: 34, time_left: '2ч 45м' },
+                    { id: 4, name: 'Ender 5 Plus', brand: 'Creality', status: 'REPAIR', bed_x: 350, bed_y: 350, bed_z: 400, current_task: null, progress: 0 },
+                ],
+                models: [
+                    { id: 1, name: 'Benchy', file_id: 'benchy_001', dimensions: '60x31x48', volume: 15.2, print_time: '1ч 30м', preview: null },
+                    { id: 2, name: 'Phone Stand', file_id: 'stand_001', dimensions: '80x60x45', volume: 28.5, print_time: '2ч 15м', preview: null },
+                    { id: 3, name: 'Vase Mode', file_id: 'vase_001', dimensions: '100x100x150', volume: 45.0, print_time: '4ч 00м', preview: null },
+                    { id: 4, name: 'Cable Clip', file_id: 'clip_001', dimensions: '25x15x10', volume: 2.1, print_time: '15м', preview: null },
+                    { id: 5, name: 'Gear Set', file_id: 'gear_001', dimensions: '50x50x20', volume: 18.3, print_time: '1ч 45м', preview: null },
+                    { id: 6, name: 'Box Lid', file_id: 'box_001', dimensions: '120x80x15', volume: 32.0, print_time: '2ч 30м', preview: null },
+                ],
+                orders: [
+                    { id: 1001, date: '15.01.2025', items: [{ name: 'Benchy', qty: 2 }, { name: 'Cable Clip', qty: 5 }], status: 'done' },
+                    { id: 1002, date: '16.01.2025', items: [{ name: 'Phone Stand', qty: 1 }], status: 'printing' },
+                    { id: 1003, date: '17.01.2025', items: [{ name: 'Vase Mode', qty: 1 }, { name: 'Gear Set', qty: 3 }], status: 'pending' },
+                ],
+                subscription: {
+                    plan: 'FREE',
+                    printers: { current: 2, max: 3 },
+                    models: { current: 8, max: 10 },
+                    prints: { current: 45, max: 50 }
+                }
+            };
+
+            renderPrinters();
+            renderModels();
+            renderOrders();
+            updateSubscriptionUI();
+        }
+
+        async function performAction(printerId, action) {
+            try {
+                const response = await fetch(`${API_BASE}/action`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        initData: tg?.initData || '',
+                        printer_id: printerId,
+                        action: action
+                    })
+                });
+
+                if (!response.ok) throw new Error('Action failed');
+
+                const data = await response.json();
+                
+                // Update local data
+                const printer = appData.printers.find(p => p.id === printerId);
+                if (printer && data.new_status) {
+                    printer.status = data.new_status;
+                    renderPrinters();
+                }
+
+                // Haptic feedback
+                if (tg?.HapticFeedback) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                }
+
+            } catch (error) {
+                console.error('Action error:', error);
+                // Demo mode - just update locally
+                const printer = appData.printers.find(p => p.id === printerId);
+                if (printer) {
+                    switch (action) {
+                        case 'start':
+                            printer.status = 'BUSY';
+                            printer.progress = 0;
+                            break;
+                        case 'pause':
+                            printer.status = 'PAUSED';
+                            break;
+                        case 'resume':
+                            printer.status = 'BUSY';
+                            break;
+                        case 'stop':
+                            printer.status = 'FREE';
+                            printer.progress = 0;
+                            printer.current_task = null;
+                            break;
+                        case 'repair':
+                            printer.status = 'REPAIR';
+                            break;
+                    }
+                    renderPrinters();
+                }
+
+                if (tg?.HapticFeedback) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                }
+            }
+
+            closeActionSheet();
+        }
+
+        function retryConnection() {
+            document.getElementById('screenError').classList.remove('active');
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            loadBootstrapData();
+        }
+
+        // ============================================
+        // RENDER FUNCTIONS
+        // ============================================
+
+        function renderPrinters() {
+            const container = document.getElementById('printersList');
+            let printers = [...appData.printers];
+
+            // Apply filter
+            printers = sortPrinters(printers, currentFilter);
+
+            if (printers.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 14H8v-4h8v4zm2-4v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z"/>
+                        </svg>
+                        <h3>Нет принтеров</h3>
+                        <p>Добавьте первый принтер через бота</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = printers.map(printer => `
+                <div class="printer-card" onclick="openPrinterActions(${printer.id})">
+                    <div class="printer-header">
+                        <div class="printer-info">
+                            <h3>${escapeHtml(printer.name)}</h3>
+                            <p>${escapeHtml(printer.brand)} | ${printer.bed_x}x${printer.bed_y}x${printer.bed_z}мм</p>
+                        </div>
+                        <span class="status-badge status-${printer.status.toLowerCase()}">${getStatusText(printer.status)}</span>
+                    </div>
+                    ${printer.status === 'BUSY' || printer.status === 'PAUSED' ? `
+                        <div class="printer-stats">
+                            <div class="printer-stat">Модель: <span>${escapeHtml(printer.current_task || 'Неизвестно')}</span></div>
+                            <div class="printer-stat">Осталось: <span>${printer.time_left || '—'}</span></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${printer.progress}%"></div>
+                            </div>
+                            <div class="progress-info">
+                                <span>Прогресс</span>
+                                <span>${printer.progress}%</span>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        function renderModels() {
+            const container = document.getElementById('modelsList');
+
+            if (appData.models.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
+                        </svg>
+                        <h3>Нет моделей</h3>
+                        <p>Загрузите STL файлы через бота</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = appData.models.map(model => `
+                <div class="model-card" onclick="openModelDetails(${model.id})">
+                    <div class="model-preview">
+                        ${model.preview ? 
+                            `<img src="${model.preview}" alt="${escapeHtml(model.name)}">` :
+                            `<svg viewBox="0 0 24 24">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                            </svg>`
+                        }
+                    </div>
+                    <div class="model-info">
+                        <h4>${escapeHtml(model.name)}</h4>
+                        <p>${model.print_time} | ${model.dimensions}мм</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderOrders() {
+            const container = document.getElementById('ordersList');
+
+            if (appData.orders.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                        </svg>
+                        <h3>Нет заказов</h3>
+                        <p>Начните печатать модели</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = appData.orders.map(order => `
+                <div class="order-card">
+                    <div class="order-header">
+                        <span class="order-number">Заказ #${order.id}</span>
+                        <span class="order-date">${order.date}</span>
+                    </div>
+                    <div class="order-items">
+                        ${order.items.map(item => `
+                            <div class="order-item">
+                                <div class="order-item-preview">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                    </svg>
+                                </div>
+                                <div class="order-item-info">
+                                    <div class="order-item-name">${escapeHtml(item.name)}</div>
+                                    <div class="order-item-details">Количество: ${item.qty}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="order-status">
+                        <div class="order-status-dot ${order.status}"></div>
+                        <span>${getOrderStatusText(order.status)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateSubscriptionUI() {
+            const sub = appData.subscription;
+            if (!sub) return;
+
+            document.getElementById('planBadge').textContent = sub.plan;
+            
+            // Printers
+            document.getElementById('limitPrinters').textContent = `${sub.printers.current} / ${sub.printers.max}`;
+            const printersFill = document.getElementById('limitPrintersFill');
+            const printersPercent = (sub.printers.current / sub.printers.max) * 100;
+            printersFill.style.width = `${printersPercent}%`;
+            printersFill.className = 'limit-fill' + (printersPercent > 90 ? ' danger' : printersPercent > 70 ? ' warning' : '');
+
+            // Models
+            document.getElementById('limitModels').textContent = `${sub.models.current} / ${sub.models.max}`;
+            const modelsFill = document.getElementById('limitModelsFill');
+            const modelsPercent = (sub.models.current / sub.models.max) * 100;
+            modelsFill.style.width = `${modelsPercent}%`;
+            modelsFill.className = 'limit-fill' + (modelsPercent > 90 ? ' danger' : modelsPercent > 70 ? ' warning' : '');
+
+            // Prints
+            document.getElementById('limitPrints').textContent = `${sub.prints.current} / ${sub.prints.max}`;
+            const printsFill = document.getElementById('limitPrintsFill');
+            const printsPercent = (sub.prints.current / sub.prints.max) * 100;
+            printsFill.style.width = `${printsPercent}%`;
+            printsFill.className = 'limit-fill' + (printsPercent > 90 ? ' danger' : printsPercent > 70 ? ' warning' : '');
+        }
+
+        // ============================================
+        // UI FUNCTIONS
+        // ============================================
+
+        function switchTab(tabName) {
+            // Update tabs
+            document.querySelectorAll('.tab-item').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === tabName);
+            });
+
+            // Update screens
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            document.getElementById(`screen${capitalize(tabName)}`).classList.add('active');
+
+            // Haptic
+            if (tg?.HapticFeedback) {
+                tg.HapticFeedback.selectionChanged();
+            }
+        }
+
+        function openFilter() {
+            document.getElementById('filterOverlay').classList.add('active');
+            if (tg?.HapticFeedback) {
+                tg.HapticFeedback.impactOccurred('light');
+            }
+        }
+
+        function closeFilter() {
+            document.getElementById('filterOverlay').classList.remove('active');
+        }
+
+        function applyFilter(filter) {
+            currentFilter = filter;
+            
+            // Update UI
+            document.querySelectorAll('.popover-item').forEach(item => {
+                item.classList.toggle('selected', item.dataset.filter === filter);
+            });
+
+            renderPrinters();
+            closeFilter();
+
+            if (tg?.HapticFeedback) {
+                tg.HapticFeedback.notificationOccurred('success');
+            }
+        }
+
+        function sortPrinters(printers, filter) {
+            switch (filter) {
+                case 'free':
+                    return printers.sort((a, b) => {
+                        const order = { FREE: 0, BUSY: 1, PAUSED: 2, REPAIR: 3 };
+                        return order[a.status] - order[b.status];
+                    });
+                case 'busy':
+                    return printers.sort((a, b) => {
+                        const order = { BUSY: 0, PAUSED: 1, FREE: 2, REPAIR: 3 };
+                        return order[a.status] - order[b.status];
+                    });
+                case 'time':
+                    return printers.sort((a, b) => (b.progress || 0) - (a.progress || 0));
+                case 'name':
+                default:
+                    return printers.sort((a, b) => a.name.localeCompare(b.name));
+            }
+        }
+
+        function openPrinterActions(printerId) {
+            const printer = appData.printers.find(p => p.id === printerId);
+            if (!printer) return;
+
+            selectedPrinter = printer;
+
+            document.getElementById('actionSheetTitle').textContent = printer.name;
+            document.getElementById('actionSheetSubtitle').textContent = `${printer.brand} | ${getStatusText(printer.status)}`;
+
+            let actions = '';
+            
+            switch (printer.status) {
+                case 'FREE':
+                    actions = `
+                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'start')">Начать печать</div>
+                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'repair')">В ремонт</div>
+                    `;
+                    break;
+                case 'BUSY':
+                    actions = `
+                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'pause')">Пауза</div>
+                        <div class="action-sheet-item danger" onclick="performAction(${printerId}, 'stop')">Остановить</div>
+                    `;
+                    break;
+                case 'PAUSED':
+                    actions = `
+                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'resume')">Продолжить</div>
+                        <div class="action-sheet-item danger" onclick="performAction(${printerId}, 'stop')">Остановить</div>
+                    `;
+                    break;
+                case 'REPAIR':
+                    actions = `
+                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'start')">Готов к работе</div>
+                    `;
+                    break;
+            }
+
+            document.getElementById('actionSheetActions').innerHTML = actions;
+            document.getElementById('actionSheetOverlay').classList.add('active');
+
+            if (tg?.HapticFeedback) {
+                tg.HapticFeedback.impactOccurred('medium');
+            }
+        }
+
+        function closeActionSheet() {
+            document.getElementById('actionSheetOverlay').classList.remove('active');
+            selectedPrinter = null;
+        }
+
+        function openModelDetails(modelId) {
+            const model = appData.models.find(m => m.id === modelId);
+            if (!model) return;
+
+            // Show model info via Telegram popup
+            if (tg?.showPopup) {
+                tg.showPopup({
+                    title: model.name,
+                    message: `Размеры: ${model.dimensions}мм\nОбъем: ${model.volume}см³\nВремя печати: ${model.print_time}`,
+                    buttons: [
+                        { id: 'print', type: 'default', text: 'Печатать' },
+                        { id: 'close', type: 'cancel' }
+                    ]
+                }, (buttonId) => {
+                    if (buttonId === 'print') {
+                        // Find free printer and start print
+                        const freePrinter = appData.printers.find(p => p.status === 'FREE');
+                        if (freePrinter) {
+                            performAction(freePrinter.id, 'start');
+                        }
+                    }
+                });
+            } else {
+                alert(`${model.name}\n\nРазмеры: ${model.dimensions}мм\nОбъем: ${model.volume}см³\nВремя печати: ${model.print_time}`);
+            }
+
+            if (tg?.HapticFeedback) {
+                tg.HapticFeedback.impactOccurred('light');
+            }
+        }
+
+        function manageSubscription() {
+            if (tg?.openTelegramLink) {
+                tg.openTelegramLink('https://t.me/denchy');
+            } else {
+                window.open('https://t.me/denchy', '_blank');
+            }
+        }
+
+        function openSettings() {
+            if (tg?.showPopup) {
+                tg.showPopup({
+                    title: 'Настройки',
+                    message: 'Настройки доступны в боте',
+                    buttons: [{ type: 'ok' }]
+                });
+            }
+        }
+
+        function openHelp() {
+            if (tg?.openTelegramLink) {
+                tg.openTelegramLink('https://t.me/denchy');
+            }
+        }
+
+        // ============================================
+        // UTILITY FUNCTIONS
+        // ============================================
+
+        function getStatusText(status) {
+            const texts = {
+                FREE: 'Свободен',
+                BUSY: 'Печатает',
+                PAUSED: 'Пауза',
+                REPAIR: 'Ремонт'
+            };
+            return texts[status] || status;
+        }
+
+        function getOrderStatusText(status) {
+            const texts = {
+                pending: 'В очереди',
+                printing: 'Печатается',
+                done: 'Выполнен'
+            };
+            return texts[status] || status;
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ============================================
+        // DEBUG / DEMO MODE
+        // ============================================
+
+        console.log(`PrintFarm Mini App v${APP_VERSION}`);
+        console.log('Developer: @denchy');
+        console.log('API Base:', API_BASE);
+
+    </script>
 </body>
 </html>
