@@ -13,72 +13,108 @@
         <header class="header">
             <div class="header-content">
                 <div class="header-left">
-                    <span class="logo">🖨️</span>
-                    <h1 class="title">PrintFarm</h1>
+                    <canvas id="header-icon" class="header-icon-canvas" width="32" height="32"></canvas>
+                    <h1 class="header-title">PrintFarm</h1>
                 </div>
-                <div class="plan-badge" id="planBadge">FREE</div>
+                <div class="header-right">
+                    <span id="plan-badge" class="plan-badge">FREE</span>
+                </div>
             </div>
         </header>
+
         <!-- Stats -->
-        <div class="stats-grid" id="statsGrid">
-            <div class="stat-card">
-                <div class="stat-value" id="statTotal">0</div>
-                <div class="stat-label">Всего</div>
+        <section class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <canvas class="stat-icon" data-icon="total" width="24" height="24"></canvas>
+                    <div class="stat-value" id="stat-total">0</div>
+                    <div class="stat-label">Всего</div>
+                </div>
+                <div class="stat-card stat-printing">
+                    <canvas class="stat-icon" data-icon="busy" width="24" height="24"></canvas>
+                    <div class="stat-value" id="stat-busy">0</div>
+                    <div class="stat-label">Печатает</div>
+                </div>
+                <div class="stat-card stat-free">
+                    <canvas class="stat-icon" data-icon="free" width="24" height="24"></canvas>
+                    <div class="stat-value" id="stat-free">0</div>
+                    <div class="stat-label">Свободно</div>
+                </div>
+                <div class="stat-card stat-models">
+                    <canvas class="stat-icon" data-icon="models" width="24" height="24"></canvas>
+                    <div class="stat-value" id="stat-models">0</div>
+                    <div class="stat-label">Моделей</div>
+                </div>
             </div>
-            <div class="stat-card stat-busy">
-                <div class="stat-value" id="statBusy">0</div>
-                <div class="stat-label">Печатает</div>
-            </div>
-            <div class="stat-card stat-free">
-                <div class="stat-value" id="statFree">0</div>
-                <div class="stat-label">Свободно</div>
-            </div>
-            <div class="stat-card stat-models">
-                <div class="stat-value" id="statModels">0</div>
-                <div class="stat-label">Моделей</div>
-            </div>
-        </div>
+        </section>
+
         <!-- Tabs -->
-        <div class="tabs">
-            <button class="tab active" data-tab="printers">🖨️ Принтеры</button>
-            <button class="tab" data-tab="models">📦 Модели</button>
-        </div>
-        <!-- Sort toggle -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="printers">
+                <canvas class="tab-icon-canvas" data-icon="printer" width="20" height="20"></canvas>
+                <span class="tab-text">Принтеры</span>
+            </button>
+            <button class="tab" data-tab="models">
+                <canvas class="tab-icon-canvas" data-icon="model" width="20" height="20"></canvas>
+                <span class="tab-text">Модели</span>
+            </button>
+        </nav>
+
+        <!-- Sort Toggle -->
         <div class="sort-toggle">
-            <button class="sort-btn active" id="sortSmall">Маленькие</button>
-            <button class="sort-btn" id="sortBig">Большие</button>
+            <span class="sort-label">Сортировка:</span>
+            <button id="sort-btn" class="sort-btn" data-sort="small">
+                <canvas id="sort-icon-canvas" width="16" height="16"></canvas>
+                <span id="sort-text">Маленькие</span>
+            </button>
         </div>
+
         <!-- Content -->
-        <div class="content" id="content">
+        <main class="content">
             <!-- Printers Tab -->
-            <div class="tab-content active" id="printersTab">
-                <div class="cards-list" id="printersList">
-                    <!-- Printers will be rendered here -->
+            <div id="printers-tab" class="tab-content active">
+                <div id="printers-list" class="cards-list">
+                    <!-- Printer cards will be inserted here -->
+                </div>
+                <div id="printers-empty" class="empty-state hidden">
+                    <canvas id="empty-printer-icon" width="64" height="64"></canvas>
+                    <p>У Вас пока нет принтеров</p>
+                    <p class="empty-hint">Добавьте принтер через бота</p>
                 </div>
             </div>
+
             <!-- Models Tab -->
-            <div class="tab-content" id="modelsTab">
-                <div class="cards-list" id="modelsList">
-                    <!-- Models will be rendered here -->
+            <div id="models-tab" class="tab-content">
+                <div id="models-list" class="cards-list">
+                    <!-- Model cards will be inserted here -->
+                </div>
+                <div id="models-empty" class="empty-state hidden">
+                    <canvas id="empty-model-icon" width="64" height="64"></canvas>
+                    <p>У Вас пока нет моделей</p>
+                    <p class="empty-hint">Загрузите STL-файл через бота</p>
                 </div>
             </div>
-        </div>
+        </main>
+
         <!-- Loading -->
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
             <p>Загрузка...</p>
         </div>
+
         <!-- Bottom Sheet -->
-        <div class="bottom-sheet-overlay" id="bottomSheetOverlay"></div>
-        <div class="bottom-sheet" id="bottomSheet">
-            <div class="bottom-sheet-handle"></div>
-            <div class="bottom-sheet-content" id="bottomSheetContent">
-                <!-- Content will be rendered here -->
+        <div id="bottom-sheet" class="bottom-sheet hidden">
+            <div class="bottom-sheet-overlay"></div>
+            <div class="bottom-sheet-content">
+                <div class="bottom-sheet-handle"></div>
+                <div id="bottom-sheet-body"></div>
             </div>
         </div>
+
         <!-- Toast -->
-        <div class="toast" id="toast"></div>
+        <div id="toast" class="toast hidden"></div>
     </div>
+
     <script src="app.js"></script>
 </body>
 </html>
