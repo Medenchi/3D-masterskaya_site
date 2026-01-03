@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -11,108 +11,154 @@
     <div id="app">
         <!-- Header -->
         <header class="header">
-            <div class="header-content">
-                <div class="header-left">
-                    <canvas id="header-icon" class="header-icon-canvas" width="32" height="32"></canvas>
-                    <h1 class="header-title">PrintFarm</h1>
-                </div>
-                <div class="header-right">
-                    <span id="plan-badge" class="plan-badge">FREE</span>
-                </div>
-            </div>
+            <div class="header-title">PrintFarm</div>
+            <button class="header-btn" id="filter-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>
+                </svg>
+            </button>
         </header>
 
-        <!-- Stats -->
-        <section class="stats-section">
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <canvas class="stat-icon" data-icon="total" width="24" height="24"></canvas>
-                    <div class="stat-value" id="stat-total">0</div>
-                    <div class="stat-label">Всего</div>
-                </div>
-                <div class="stat-card stat-printing">
-                    <canvas class="stat-icon" data-icon="busy" width="24" height="24"></canvas>
-                    <div class="stat-value" id="stat-busy">0</div>
-                    <div class="stat-label">Печатает</div>
-                </div>
-                <div class="stat-card stat-free">
-                    <canvas class="stat-icon" data-icon="free" width="24" height="24"></canvas>
-                    <div class="stat-value" id="stat-free">0</div>
-                    <div class="stat-label">Свободно</div>
-                </div>
-                <div class="stat-card stat-models">
-                    <canvas class="stat-icon" data-icon="models" width="24" height="24"></canvas>
-                    <div class="stat-value" id="stat-models">0</div>
-                    <div class="stat-label">Моделей</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Tabs -->
-        <nav class="tabs">
-            <button class="tab active" data-tab="printers">
-                <canvas class="tab-icon-canvas" data-icon="printer" width="20" height="20"></canvas>
-                <span class="tab-text">Принтеры</span>
-            </button>
-            <button class="tab" data-tab="models">
-                <canvas class="tab-icon-canvas" data-icon="model" width="20" height="20"></canvas>
-                <span class="tab-text">Модели</span>
-            </button>
-        </nav>
-
-        <!-- Sort Toggle -->
-        <div class="sort-toggle">
-            <span class="sort-label">Сортировка:</span>
-            <button id="sort-btn" class="sort-btn" data-sort="small">
-                <canvas id="sort-icon-canvas" width="16" height="16"></canvas>
-                <span id="sort-text">Маленькие</span>
-            </button>
+        <!-- Filter Popover -->
+        <div class="popover hidden" id="filter-popover">
+            <div class="popover-item" data-sort="free">Free first</div>
+            <div class="popover-item" data-sort="busy">Busy first</div>
+            <div class="popover-item" data-sort="fast">Fast prints</div>
+            <div class="popover-item" data-sort="slow">Slow prints</div>
+            <div class="popover-item" data-sort="name">By name</div>
         </div>
 
         <!-- Content -->
         <main class="content">
             <!-- Printers Tab -->
             <div id="printers-tab" class="tab-content active">
-                <div id="printers-list" class="cards-list">
-                    <!-- Printer cards will be inserted here -->
+                <div class="section-header">
+                    <span class="section-title">Printers</span>
+                    <span class="section-count" id="printers-count">0</span>
                 </div>
-                <div id="printers-empty" class="empty-state hidden">
-                    <canvas id="empty-printer-icon" width="64" height="64"></canvas>
-                    <p>У Вас пока нет принтеров</p>
-                    <p class="empty-hint">Добавьте принтер через бота</p>
+                <div class="card-group" id="printers-list"></div>
+                <div class="empty-state hidden" id="printers-empty">
+                    <div class="empty-icon" id="empty-printers-icon"></div>
+                    <div class="empty-text">No printers yet</div>
+                    <div class="empty-hint">Add via bot</div>
                 </div>
             </div>
 
             <!-- Models Tab -->
             <div id="models-tab" class="tab-content">
-                <div id="models-list" class="cards-list">
-                    <!-- Model cards will be inserted here -->
+                <div class="section-header">
+                    <span class="section-title">Models</span>
+                    <span class="section-count" id="models-count">0</span>
                 </div>
-                <div id="models-empty" class="empty-state hidden">
-                    <canvas id="empty-model-icon" width="64" height="64"></canvas>
-                    <p>У Вас пока нет моделей</p>
-                    <p class="empty-hint">Загрузите STL-файл через бота</p>
+                <div class="card-group" id="models-list"></div>
+                <div class="empty-state hidden" id="models-empty">
+                    <div class="empty-icon" id="empty-models-icon"></div>
+                    <div class="empty-text">No models yet</div>
+                    <div class="empty-hint">Upload STL/G-code via bot</div>
+                </div>
+            </div>
+
+            <!-- Orders Tab -->
+            <div id="orders-tab" class="tab-content">
+                <div class="section-header">
+                    <span class="section-title">Orders</span>
+                    <span class="section-count" id="orders-count">0</span>
+                </div>
+                <div class="card-group" id="orders-list"></div>
+                <div class="empty-state hidden" id="orders-empty">
+                    <div class="empty-icon" id="empty-orders-icon"></div>
+                    <div class="empty-text">No orders yet</div>
+                    <div class="empty-hint">Create via bot</div>
+                </div>
+            </div>
+
+            <!-- Profile Tab -->
+            <div id="profile-tab" class="tab-content">
+                <div class="profile-header">
+                    <div class="profile-avatar" id="profile-avatar"></div>
+                    <div class="profile-name" id="profile-name">User</div>
+                    <div class="profile-id" id="profile-id">ID: 0</div>
+                </div>
+
+                <div class="card-group">
+                    <div class="settings-card">
+                        <div class="settings-header">Subscription</div>
+                        <div class="settings-row">
+                            <span class="settings-label">Plan</span>
+                            <span class="settings-value plan-badge" id="profile-plan">FREE</span>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label">Printers</span>
+                            <div class="limit-bar">
+                                <div class="limit-fill" id="limit-fill"></div>
+                            </div>
+                            <span class="settings-value" id="limit-text">0/1</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <div class="settings-header">Statistics</div>
+                        <div class="settings-row">
+                            <span class="settings-label">Total print time</span>
+                            <span class="settings-value" id="stat-time">0h</span>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label">Filament used</span>
+                            <span class="settings-value" id="stat-filament">0m</span>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label">Top printer</span>
+                            <span class="settings-value" id="stat-top">-</span>
+                        </div>
+                    </div>
+
+                    <button class="settings-btn" id="manage-sub-btn">Manage Subscription</button>
+                </div>
+
+                <div class="footer">
+                    <div class="footer-text">Version 2.6.7</div>
+                    <div class="footer-text">Developer: @nicrocky</div>
+                    <a class="footer-link" href="https://t.me/nicrocky" target="_blank">Support Project</a>
                 </div>
             </div>
         </main>
 
-        <!-- Loading -->
-        <div id="loading" class="loading">
-            <div class="loading-spinner"></div>
-            <p>Загрузка...</p>
-        </div>
-
         <!-- Bottom Sheet -->
-        <div id="bottom-sheet" class="bottom-sheet hidden">
-            <div class="bottom-sheet-overlay"></div>
-            <div class="bottom-sheet-content">
-                <div class="bottom-sheet-handle"></div>
-                <div id="bottom-sheet-body"></div>
+        <div class="sheet hidden" id="sheet">
+            <div class="sheet-overlay"></div>
+            <div class="sheet-content">
+                <div class="sheet-handle"></div>
+                <div class="sheet-body" id="sheet-body"></div>
             </div>
         </div>
 
+        <!-- Tab Bar -->
+        <nav class="tabbar">
+            <button class="tabbar-item active" data-tab="printers">
+                <div class="tabbar-icon" id="tab-icon-printers"></div>
+                <span class="tabbar-label">Printers</span>
+            </button>
+            <button class="tabbar-item" data-tab="models">
+                <div class="tabbar-icon" id="tab-icon-models"></div>
+                <span class="tabbar-label">Models</span>
+            </button>
+            <button class="tabbar-item" data-tab="orders">
+                <div class="tabbar-icon" id="tab-icon-orders"></div>
+                <span class="tabbar-label">Orders</span>
+            </button>
+            <button class="tabbar-item" data-tab="profile">
+                <div class="tabbar-icon tabbar-avatar" id="tab-avatar"></div>
+                <span class="tabbar-label">Profile</span>
+            </button>
+        </nav>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+        </div>
+
         <!-- Toast -->
-        <div id="toast" class="toast hidden"></div>
+        <div class="toast hidden" id="toast"></div>
     </div>
 
     <script src="app.js"></script>
