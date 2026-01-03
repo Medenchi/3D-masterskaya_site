@@ -1,335 +1,12 @@
-// ===================== CONFIGURATION =====================
+const API_BASE = "https://relative-joyce-3dprintable-b0155a87.koyeb.app"
+/**
+ * PrintFarm Mini App v2.6.7
+ * Telegram Native 2026 Design
+ */
 
-const API_BASE = "https://relative-joyce-3dprintable-b0155a87.koyeb.app"; // Replace with your backend URL
-const USE_MOCK = false; // Set to false in production
-
-// ===================== ICON DRAWING =====================
-
-const IconDrawer = {
-    colors: {
-        primary: '#2481cc',
-        success: '#4caf50',
-        warning: '#ffc107',
-        danger: '#f44336',
-        busy: '#2196f3',
-        gray: '#999999',
-        white: '#ffffff',
-        dark: '#333333'
-    },
-
-    drawPrinter(ctx, x, y, size, color = null) {
-        const c = color || this.colors.primary;
-        ctx.strokeStyle = c;
-        ctx.fillStyle = c;
-        ctx.lineWidth = 2;
-        
-        // Frame
-        ctx.strokeRect(x + 2, y + size * 0.3, size - 4, size * 0.65);
-        // Build plate
-        ctx.fillRect(x + 4, y + size * 0.55, size - 8, 3);
-        // Extruder
-        ctx.fillRect(x + size * 0.35, y + size * 0.25, size * 0.3, size * 0.15);
-        // Gantry
-        ctx.beginPath();
-        ctx.moveTo(x + 4, y + size * 0.3);
-        ctx.lineTo(x + size - 4, y + size * 0.3);
-        ctx.stroke();
-    },
-
-    drawModel(ctx, x, y, size, color = null) {
-        const c = color || this.colors.primary;
-        const half = size / 2;
-        
-        // 3D cube
-        ctx.fillStyle = c;
-        ctx.beginPath();
-        ctx.moveTo(x + half * 0.5, y + half);
-        ctx.lineTo(x + size - half * 0.5, y + half);
-        ctx.lineTo(x + size - half * 0.5, y + size);
-        ctx.lineTo(x + half * 0.5, y + size);
-        ctx.closePath();
-        ctx.fill();
-        
-        // Top face (lighter)
-        ctx.fillStyle = this.lighten(c, 30);
-        ctx.beginPath();
-        ctx.moveTo(x + half * 0.5, y + half);
-        ctx.lineTo(x + half, y + half * 0.4);
-        ctx.lineTo(x + size, y + half * 0.4);
-        ctx.lineTo(x + size - half * 0.5, y + half);
-        ctx.closePath();
-        ctx.fill();
-        
-        // Right face (darker)
-        ctx.fillStyle = this.darken(c, 30);
-        ctx.beginPath();
-        ctx.moveTo(x + size - half * 0.5, y + half);
-        ctx.lineTo(x + size, y + half * 0.4);
-        ctx.lineTo(x + size, y + size - half * 0.5);
-        ctx.lineTo(x + size - half * 0.5, y + size);
-        ctx.closePath();
-        ctx.fill();
-    },
-
-    drawStatusFree(ctx, x, y, size) {
-        ctx.fillStyle = this.colors.success;
-        ctx.beginPath();
-        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Checkmark
-        ctx.strokeStyle = this.colors.white;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x + size * 0.25, y + size * 0.5);
-        ctx.lineTo(x + size * 0.4, y + size * 0.7);
-        ctx.lineTo(x + size * 0.75, y + size * 0.3);
-        ctx.stroke();
-    },
-
-    drawStatusBusy(ctx, x, y, size) {
-        ctx.fillStyle = this.colors.busy;
-        ctx.beginPath();
-        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Play icon
-        ctx.fillStyle = this.colors.white;
-        ctx.beginPath();
-        ctx.moveTo(x + size * 0.35, y + size * 0.25);
-        ctx.lineTo(x + size * 0.75, y + size * 0.5);
-        ctx.lineTo(x + size * 0.35, y + size * 0.75);
-        ctx.closePath();
-        ctx.fill();
-    },
-
-    drawStatusPaused(ctx, x, y, size) {
-        ctx.fillStyle = this.colors.warning;
-        ctx.beginPath();
-        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Pause bars
-        ctx.fillStyle = this.colors.dark;
-        ctx.fillRect(x + size * 0.3, y + size * 0.25, size * 0.15, size * 0.5);
-        ctx.fillRect(x + size * 0.55, y + size * 0.25, size * 0.15, size * 0.5);
-    },
-
-    drawStatusRepair(ctx, x, y, size) {
-        ctx.fillStyle = this.colors.danger;
-        ctx.beginPath();
-        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Wrench
-        ctx.strokeStyle = this.colors.white;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(x + size * 0.3, y + size * 0.3, size * 0.15, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x + size * 0.4, y + size * 0.4);
-        ctx.lineTo(x + size * 0.7, y + size * 0.7);
-        ctx.stroke();
-    },
-
-    drawRuler(ctx, x, y, size) {
-        ctx.strokeStyle = this.colors.gray;
-        ctx.fillStyle = this.colors.gray;
-        ctx.lineWidth = 1.5;
-        
-        // Ruler body
-        ctx.strokeRect(x, y + size * 0.35, size, size * 0.3);
-        // Tick marks
-        for (let i = 0; i <= 4; i++) {
-            const tx = x + (size * i) / 4;
-            ctx.beginPath();
-            ctx.moveTo(tx, y + size * 0.35);
-            ctx.lineTo(tx, y + size * 0.5);
-            ctx.stroke();
-        }
-    },
-
-    drawClock(ctx, x, y, size) {
-        ctx.strokeStyle = this.colors.gray;
-        ctx.lineWidth = 1.5;
-        
-        // Circle
-        ctx.beginPath();
-        ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        // Hands
-        const cx = x + size/2;
-        const cy = y + size/2;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(cx, cy - size * 0.3);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(cx + size * 0.2, cy);
-        ctx.stroke();
-    },
-
-    drawBrandIcon(ctx, x, y, size, brand) {
-        const brandColors = {
-            'Creality': '#009688',
-            'Anycubic': '#2196f3',
-            'Prusa': '#ff9800',
-            'Bambu Lab': '#4caf50',
-            'Voron': '#9c27b0',
-            'Elegoo': '#f44336',
-            'Artillery': '#ff5722',
-            'QIDI': '#3f51b5',
-            'Flashforge': '#00bcd4'
-        };
-        
-        const color = brandColors[brand] || '#666666';
-        
-        // Rounded rectangle background
-        ctx.fillStyle = color;
-        this.roundRect(ctx, x, y, size, size, size * 0.2);
-        ctx.fill();
-        
-        // Brand initial
-        ctx.fillStyle = this.colors.white;
-        ctx.font = `bold ${size * 0.5}px -apple-system, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(brand[0].toUpperCase(), x + size/2, y + size/2);
-    },
-
-    roundRect(ctx, x, y, w, h, r) {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-    },
-
-    lighten(color, percent) {
-        const num = parseInt(color.replace('#', ''), 16);
-        const amt = Math.round(2.55 * percent);
-        const R = Math.min(255, (num >> 16) + amt);
-        const G = Math.min(255, ((num >> 8) & 0x00FF) + amt);
-        const B = Math.min(255, (num & 0x0000FF) + amt);
-        return `rgb(${R}, ${G}, ${B})`;
-    },
-
-    darken(color, percent) {
-        const num = parseInt(color.replace('#', ''), 16);
-        const amt = Math.round(2.55 * percent);
-        const R = Math.max(0, (num >> 16) - amt);
-        const G = Math.max(0, ((num >> 8) & 0x00FF) - amt);
-        const B = Math.max(0, (num & 0x0000FF) - amt);
-        return `rgb(${R}, ${G}, ${B})`;
-    }
-};
-
-// ===================== MOCK DATA =====================
-
-const MOCK_DATA = {
-    user: {
-        id: 1,
-        telegram_id: 123456789,
-        username: "test_user",
-        first_name: "Тестовый",
-        plan: "PRO",
-        paid_until: "2025-12-31T23:59:59Z",
-        created_at: "2024-01-01T00:00:00Z"
-    },
-    printers: [
-        {
-            id: 1, name: "Creality #1", status: "BUSY", brand: "Creality", model_name: "Ender 3 V2",
-            bed_x: 220, bed_y: 220, bed_z: 250, image_url: null,
-            current_item_name: "Держатель для телефона", current_estimated_time: 4.5,
-            last_start: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), duration_hours: 4.5
-        },
-        {
-            id: 2, name: "Bambu #1", status: "FREE", brand: "Bambu Lab", model_name: "P1S",
-            bed_x: 256, bed_y: 256, bed_z: 256, image_url: null,
-            current_item_name: null, current_estimated_time: null, last_start: null, duration_hours: 0
-        },
-        {
-            id: 3, name: "Prusa MK4", status: "PAUSED", brand: "Prusa", model_name: "MK4",
-            bed_x: 250, bed_y: 210, bed_z: 220, image_url: null,
-            current_item_name: "Корпус для Arduino", current_estimated_time: 6.0,
-            last_start: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), duration_hours: 6.0
-        },
-        {
-            id: 4, name: "Voron 2.4", status: "BUSY", brand: "Voron", model_name: "V2.4 300",
-            bed_x: 300, bed_y: 300, bed_z: 280, image_url: null,
-            current_item_name: "Настольная ваза", current_estimated_time: 8.0,
-            last_start: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), duration_hours: 8.0
-        },
-        {
-            id: 5, name: "Anycubic #1", status: "FREE", brand: "Anycubic", model_name: "Kobra 2",
-            bed_x: 220, bed_y: 220, bed_z: 250, image_url: null,
-            current_item_name: null, current_estimated_time: null, last_start: null, duration_hours: 0
-        },
-        {
-            id: 6, name: "K1 Max", status: "REPAIR", brand: "Creality", model_name: "K1 Max",
-            bed_x: 300, bed_y: 300, bed_z: 300, image_url: null,
-            current_item_name: null, current_estimated_time: null, last_start: null, duration_hours: 0
-        },
-        {
-            id: 7, name: "Elegoo N4", status: "BUSY", brand: "Elegoo", model_name: "Neptune 4",
-            bed_x: 225, bed_y: 225, bed_z: 265, image_url: null,
-            current_item_name: "Крышка для банки", current_estimated_time: 2.0,
-            last_start: new Date(Date.now() - 1.5 * 60 * 60 * 1000).toISOString(), duration_hours: 2.0
-        },
-        {
-            id: 8, name: "Ender 5+", status: "FREE", brand: "Creality", model_name: "Ender 5 Plus",
-            bed_x: 350, bed_y: 350, bed_z: 400, image_url: null,
-            current_item_name: null, current_estimated_time: null, last_start: null, duration_hours: 0
-        },
-        {
-            id: 9, name: "Mini Prusa", status: "BUSY", brand: "Prusa", model_name: "Mini+",
-            bed_x: 180, bed_y: 180, bed_z: 180, image_url: null,
-            current_item_name: "Брелок", current_estimated_time: 0.5,
-            last_start: new Date(Date.now() - 0.3 * 60 * 60 * 1000).toISOString(), duration_hours: 0.5
-        },
-        {
-            id: 10, name: "X1 Carbon", status: "FREE", brand: "Bambu Lab", model_name: "X1C",
-            bed_x: 256, bed_y: 256, bed_z: 256, image_url: null,
-            current_item_name: null, current_estimated_time: null, last_start: null, duration_hours: 0
-        },
-        {
-            id: 11, name: "QIDI Max", status: "PAUSED", brand: "QIDI", model_name: "X-Max 3",
-            bed_x: 325, bed_y: 325, bed_z: 315, image_url: null,
-            current_item_name: "Большая статуэтка", current_estimated_time: 24.0,
-            last_start: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), duration_hours: 24.0
-        },
-        {
-            id: 12, name: "Artillery SW", status: "FREE", brand: "Artillery", model_name: "Sidewinder X2",
-            bed_x: 300, bed_y: 300, bed_z: 400, image_url: null,
-            current_item_name: null, current_estimated_time: null, last_start: null, duration_hours: 0
-        }
-    ],
-    models: [
-        { id: 1, item_name: "Держатель для телефона.stl", estimated_time: 4.5, size_x: 120, size_y: 80, size_z: 15, volume: 45000, created_at: "2024-03-01T10:00:00Z" },
-        { id: 2, item_name: "Корпус для Arduino.stl", estimated_time: 6.0, size_x: 100, size_y: 70, size_z: 40, volume: 85000, created_at: "2024-03-02T11:00:00Z" },
-        { id: 3, item_name: "Настольная ваза.stl", estimated_time: 8.0, size_x: 150, size_y: 150, size_z: 200, volume: 120000, created_at: "2024-03-03T12:00:00Z" },
-        { id: 4, item_name: "Крышка для банки.stl", estimated_time: 2.0, size_x: 80, size_y: 80, size_z: 20, volume: 25000, created_at: "2024-03-04T13:00:00Z" },
-        { id: 5, item_name: "Брелок.stl", estimated_time: 0.5, size_x: 40, size_y: 30, size_z: 5, volume: 3000, created_at: "2024-03-05T14:00:00Z" },
-        { id: 6, item_name: "Большая статуэтка.stl", estimated_time: 24.0, size_x: 200, size_y: 150, size_z: 300, volume: 450000, created_at: "2024-03-06T15:00:00Z" },
-        { id: 7, item_name: "Шестерёнка M3.stl", estimated_time: 1.0, size_x: 30, size_y: 30, size_z: 10, volume: 5000, created_at: "2024-03-07T16:00:00Z" },
-        { id: 8, item_name: "Кронштейн для камеры.stl", estimated_time: 3.5, size_x: 90, size_y: 60, size_z: 45, volume: 35000, created_at: "2024-03-08T17:00:00Z" },
-        { id: 9, item_name: "Подставка для наушников.stl", estimated_time: 5.0, size_x: 180, size_y: 120, size_z: 250, volume: 95000, created_at: "2024-03-09T18:00:00Z" },
-        { id: 10, item_name: "Органайзер для стола.stl", estimated_time: 7.0, size_x: 200, size_y: 150, size_z: 100, volume: 180000, created_at: "2024-03-10T19:00:00Z" },
-        { id: 11, item_name: "Колпачок для ручки.stl", estimated_time: 0.3, size_x: 15, size_y: 15, size_z: 25, volume: 2000, created_at: "2024-03-11T20:00:00Z" },
-        { id: 12, item_name: "Подставка для книг.stl", estimated_time: 4.0, size_x: 140, size_y: 100, size_z: 180, volume: 75000, created_at: "2024-03-12T21:00:00Z" },
-        { id: 13, item_name: "Фигурка дракона.stl", estimated_time: 12.0, size_x: 180, size_y: 120, size_z: 220, volume: 250000, created_at: "2024-03-13T22:00:00Z" },
-        { id: 14, item_name: "Коробка с крышкой.stl", estimated_time: 2.5, size_x: 100, size_y: 100, size_z: 50, volume: 40000, created_at: "2024-03-14T23:00:00Z" }
-    ]
-};
+const API_BASE = "https://relative-joyce-3dprintable-b0155a87.koyeb.app";
+const USE_MOCK = false;
+const VERSION = "2.6.7";
 
 // ===================== STATE =====================
 
@@ -337,430 +14,433 @@ let state = {
     user: null,
     printers: [],
     models: [],
+    orders: [],
     currentTab: 'printers',
-    sortOrder: 'small',
-    isLoading: true
+    sortMode: 'free'
 };
-
-// ===================== TELEGRAM WEBAPP =====================
 
 const tg = window.Telegram?.WebApp;
 
-function initTelegram() {
+// ===================== ICONS (SVG) =====================
+
+const Icons = {
+    printer: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="6" y="9" width="12" height="10" rx="1"/>
+        <path d="M6 14h12"/>
+        <rect x="8" y="4" width="8" height="5" rx="1"/>
+        <circle cx="17" cy="11" r="1" fill="currentColor"/>
+    </svg>`,
+    
+    model: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+        <path d="M2 17l10 5 10-5"/>
+        <path d="M2 12l10 5 10-5"/>
+    </svg>`,
+    
+    order: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M9 12l2 2 4-4"/>
+    </svg>`,
+    
+    user: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>
+    </svg>`,
+    
+    cube: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2L2 7v10l10 5 10-5V7l-10-5z"/>
+        <path d="M12 22V12"/>
+        <path d="M2 7l10 5"/>
+        <path d="M22 7l-10 5"/>
+    </svg>`
+};
+
+// ===================== BRAND COLORS =====================
+
+const brandColors = {
+    'Creality': '#009688',
+    'Anycubic': '#2196f3',
+    'Prusa': '#ff9800',
+    'Bambu Lab': '#4caf50',
+    'Voron': '#9c27b0',
+    'Elegoo': '#f44336',
+    'Artillery': '#ff5722',
+    'QIDI': '#3f51b5',
+    'Flashforge': '#00bcd4'
+};
+
+// ===================== INIT =====================
+
+function init() {
     if (tg) {
         tg.ready();
         tg.expand();
+        applyTheme();
+    }
+    
+    initTabBar();
+    initFilter();
+    initIcons();
+    loadData();
+    startAutoRefresh();
+}
+
+function applyTheme() {
+    if (!tg?.themeParams) return;
+    const root = document.documentElement;
+    if (tg.themeParams.bg_color) root.style.setProperty('--bg', tg.themeParams.secondary_bg_color || '#f1f2f6');
+    if (tg.themeParams.text_color) root.style.setProperty('--text', tg.themeParams.text_color);
+    if (tg.themeParams.hint_color) root.style.setProperty('--text-secondary', tg.themeParams.hint_color);
+    if (tg.themeParams.button_color) root.style.setProperty('--accent', tg.themeParams.button_color);
+}
+
+function initIcons() {
+    const tabIcons = {
+        'tab-icon-printers': Icons.printer,
+        'tab-icon-models': Icons.model,
+        'tab-icon-orders': Icons.order
+    };
+    
+    Object.entries(tabIcons).forEach(([id, svg]) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = svg;
+    });
+    
+    ['empty-printers-icon', 'empty-models-icon', 'empty-orders-icon'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = Icons.cube;
+    });
+}
+
+// ===================== TAB BAR =====================
+
+function initTabBar() {
+    document.querySelectorAll('.tabbar-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            switchTab(tab);
+        });
+    });
+}
+
+function switchTab(tab) {
+    state.currentTab = tab;
+    
+    document.querySelectorAll('.tabbar-item').forEach(b => b.classList.remove('active'));
+    document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+    
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(`${tab}-tab`).classList.add('active');
+    
+    const filterBtn = document.getElementById('filter-btn');
+    filterBtn.style.display = tab === 'printers' ? 'flex' : 'none';
+}
+
+// ===================== FILTER =====================
+
+function initFilter() {
+    const btn = document.getElementById('filter-btn');
+    const popover = document.getElementById('filter-popover');
+    
+    if (!btn || !popover) return;
+    
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        popover.classList.toggle('hidden');
+    });
+    
+    document.addEventListener('click', () => {
+        popover.classList.add('hidden');
+    });
+    
+    popover.querySelectorAll('.popover-item').forEach(item => {
+        item.addEventListener('click', () => {
+            state.sortMode = item.dataset.sort;
+            popover.querySelectorAll('.popover-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            popover.classList.add('hidden');
+            renderPrinters();
+        });
+    });
+}
+
+// ===================== DATA =====================
+
+async function loadData() {
+    try {
+        const data = await fetchBootstrap();
+        state.user = data.user;
+        state.printers = data.printers || [];
+        state.models = data.models || [];
+        state.orders = data.orders || [];
         
-        document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
-        document.documentElement.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#000000');
-        document.documentElement.style.setProperty('--tg-theme-hint-color', tg.themeParams.hint_color || '#999999');
-        document.documentElement.style.setProperty('--tg-theme-link-color', tg.themeParams.link_color || '#2481cc');
-        document.documentElement.style.setProperty('--tg-theme-button-color', tg.themeParams.button_color || '#2481cc');
-        document.documentElement.style.setProperty('--tg-theme-button-text-color', tg.themeParams.button_text_color || '#ffffff');
-        document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', tg.themeParams.secondary_bg_color || '#f0f0f0');
+        render();
+        document.getElementById('loading').classList.add('hidden');
+    } catch (e) {
+        console.error('Load error:', e);
+        showToast('Failed to load data');
+        document.getElementById('loading').classList.add('hidden');
     }
 }
 
-// ===================== API =====================
-
 async function fetchBootstrap() {
     if (USE_MOCK) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        return MOCK_DATA;
+        await delay(300);
+        return getMockData();
     }
     
-    const initData = tg?.initData || '';
-    const response = await fetch(`${API_BASE}/api/bootstrap`, {
+    const res = await fetch(`${API_BASE}/api/bootstrap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData })
+        body: JSON.stringify({ initData: tg?.initData || '' })
     });
     
-    if (!response.ok) {
-        throw new Error('Failed to fetch data');
-    }
-    
-    return response.json();
+    if (!res.ok) throw new Error('API error');
+    return res.json();
 }
 
 async function printerAction(printerId, action) {
     if (USE_MOCK) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        const printer = state.printers.find(p => p.id === printerId);
-        if (printer) {
-            switch (action) {
-                case 'pause':
-                    printer.status = 'PAUSED';
-                    break;
-                case 'resume':
-                    printer.status = 'BUSY';
-                    break;
-                case 'finish':
-                    printer.status = 'FREE';
-                    printer.current_item_name = null;
-                    printer.last_start = null;
-                    break;
-                case 'repair':
-                    printer.status = 'REPAIR';
-                    printer.current_item_name = null;
-                    break;
-                case 'repair_done':
-                    printer.status = 'FREE';
-                    break;
-            }
+        await delay(200);
+        const p = state.printers.find(x => x.id === printerId);
+        if (p) {
+            if (action === 'pause') p.status = 'PAUSED';
+            else if (action === 'resume') p.status = 'BUSY';
+            else if (action === 'finish') { p.status = 'FREE'; p.current_item_name = null; }
+            else if (action === 'repair') { p.status = 'REPAIR'; p.current_item_name = null; }
+            else if (action === 'repair_done') p.status = 'FREE';
         }
         return { success: true };
     }
     
-    const initData = tg?.initData || '';
-    const response = await fetch(`${API_BASE}/api/printer/action`, {
+    const res = await fetch(`${API_BASE}/api/printer/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData, printer_id: printerId, action })
+        body: JSON.stringify({ initData: tg?.initData || '', printer_id: printerId, action })
     });
     
-    if (!response.ok) {
-        throw new Error('Action failed');
-    }
-    
-    return response.json();
+    if (!res.ok) throw new Error('Action failed');
+    return res.json();
 }
 
-// ===================== UTILS =====================
-
-function getStatusText(status) {
-    const texts = {
-        'FREE': 'Свободен',
-        'BUSY': 'Печатает',
-        'PAUSED': 'Пауза',
-        'REPAIR': 'Ремонт'
-    };
-    return texts[status] || status;
-}
-
-function calculateProgress(lastStart, durationHours) {
-    if (!lastStart || !durationHours) return 0;
-    
-    const startTime = new Date(lastStart).getTime();
-    const now = Date.now();
-    const elapsed = (now - startTime) / (1000 * 60 * 60);
-    const progress = Math.min(100, (elapsed / durationHours) * 100);
-    
-    return Math.round(progress * 10) / 10;
-}
-
-function formatTimeLeft(lastStart, durationHours) {
-    if (!lastStart || !durationHours) return '';
-    
-    const startTime = new Date(lastStart).getTime();
-    const now = Date.now();
-    const elapsed = (now - startTime) / (1000 * 60 * 60);
-    const remaining = Math.max(0, durationHours - elapsed);
-    
-    if (remaining >= 1) {
-        const hours = Math.floor(remaining);
-        const minutes = Math.round((remaining % 1) * 60);
-        return `${hours}ч ${minutes}мин`;
-    } else {
-        return `${Math.round(remaining * 60)}мин`;
-    }
-}
-
-function formatSize(x, y, z) {
-    if (!x || !y || !z) return null;
-    return `${Math.round(x)}x${Math.round(y)}x${Math.round(z)}`;
-}
-
-function formatTime(hours) {
-    if (!hours) return '—';
-    if (hours < 1) {
-        return `${Math.round(hours * 60)} мин`;
-    }
-    return `${hours.toFixed(1)} ч`;
-}
-
-// ===================== SORTING =====================
-
-function sortPrinters(printers, order) {
-    return [...printers].sort((a, b) => {
-        const areaA = (a.bed_x || 0) * (a.bed_y || 0);
-        const areaB = (b.bed_x || 0) * (b.bed_y || 0);
-        return order === 'small' ? areaA - areaB : areaB - areaA;
-    });
-}
-
-function sortModels(models, order) {
-    return [...models].sort((a, b) => {
-        const volA = (a.size_x || 0) * (a.size_y || 0) * (a.size_z || 0);
-        const volB = (b.size_x || 0) * (b.size_y || 0) * (b.size_z || 0);
-        
-        if (volA === 0 && volB === 0) return 0;
-        if (volA === 0) return 1;
-        if (volB === 0) return -1;
-        
-        return order === 'small' ? volA - volB : volB - volA;
-    });
-}
-
-// ===================== ICON INITIALIZATION =====================
-
-function initIcons() {
-    // Header icon
-    const headerCanvas = document.getElementById('header-icon');
-    if (headerCanvas) {
-        const ctx = headerCanvas.getContext('2d');
-        IconDrawer.drawPrinter(ctx, 2, 2, 28, '#ffffff');
-    }
-    
-    // Stat icons
-    document.querySelectorAll('.stat-icon').forEach(canvas => {
-        const ctx = canvas.getContext('2d');
-        const icon = canvas.dataset.icon;
-        switch(icon) {
-            case 'total':
-                IconDrawer.drawPrinter(ctx, 2, 2, 20, IconDrawer.colors.gray);
-                break;
-            case 'busy':
-                IconDrawer.drawStatusBusy(ctx, 2, 2, 20);
-                break;
-            case 'free':
-                IconDrawer.drawStatusFree(ctx, 2, 2, 20);
-                break;
-            case 'models':
-                IconDrawer.drawModel(ctx, 2, 2, 20, IconDrawer.colors.primary);
-                break;
-        }
-    });
-    
-    // Tab icons
-    document.querySelectorAll('.tab-icon-canvas').forEach(canvas => {
-        const ctx = canvas.getContext('2d');
-        const icon = canvas.dataset.icon;
-        if (icon === 'printer') {
-            IconDrawer.drawPrinter(ctx, 0, 0, 20, IconDrawer.colors.gray);
-        } else if (icon === 'model') {
-            IconDrawer.drawModel(ctx, 0, 0, 20, IconDrawer.colors.gray);
-        }
-    });
-    
-    // Sort icon
-    const sortCanvas = document.getElementById('sort-icon-canvas');
-    if (sortCanvas) {
-        const ctx = sortCanvas.getContext('2d');
-        IconDrawer.drawRuler(ctx, 0, 0, 16);
-    }
-    
-    // Empty state icons
-    const emptyPrinter = document.getElementById('empty-printer-icon');
-    if (emptyPrinter) {
-        const ctx = emptyPrinter.getContext('2d');
-        IconDrawer.drawPrinter(ctx, 8, 8, 48, IconDrawer.colors.gray);
-    }
-    
-    const emptyModel = document.getElementById('empty-model-icon');
-    if (emptyModel) {
-        const ctx = emptyModel.getContext('2d');
-        IconDrawer.drawModel(ctx, 8, 8, 48, IconDrawer.colors.gray);
-    }
+function delay(ms) {
+    return new Promise(r => setTimeout(r, ms));
 }
 
 // ===================== RENDER =====================
 
-function renderStats() {
-    const total = state.printers.length;
-    const busy = state.printers.filter(p => p.status === 'BUSY').length;
-    const free = state.printers.filter(p => p.status === 'FREE').length;
-    const models = state.models.length;
-    
-    document.getElementById('stat-total').textContent = total;
-    document.getElementById('stat-busy').textContent = busy;
-    document.getElementById('stat-free').textContent = free;
-    document.getElementById('stat-models').textContent = models;
-}
-
-function renderPlanBadge() {
-    const badge = document.getElementById('plan-badge');
-    if (!state.user) return;
-    
-    badge.textContent = state.user.plan;
-    badge.className = 'plan-badge';
-    
-    if (state.user.plan === 'PRO') {
-        badge.classList.add('pro');
-    } else if (state.user.plan === 'STUDIO') {
-        badge.classList.add('studio');
-    }
+function render() {
+    renderPrinters();
+    renderModels();
+    renderOrders();
+    renderProfile();
+    updateAvatar();
 }
 
 function renderPrinters() {
-    const container = document.getElementById('printers-list');
-    const emptyState = document.getElementById('printers-empty');
+    const list = document.getElementById('printers-list');
+    const empty = document.getElementById('printers-empty');
+    const count = document.getElementById('printers-count');
     
-    const sortedPrinters = sortPrinters(state.printers, state.sortOrder);
+    let printers = sortPrinters([...state.printers]);
+    count.textContent = printers.length;
     
-    if (sortedPrinters.length === 0) {
-        container.innerHTML = '';
-        emptyState.classList.remove('hidden');
+    if (!printers.length) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
         return;
     }
     
-    emptyState.classList.add('hidden');
-    
-    container.innerHTML = sortedPrinters.map((printer, index) => {
-        const progress = calculateProgress(printer.last_start, printer.duration_hours);
-        const timeLeft = formatTimeLeft(printer.last_start, printer.duration_hours);
-        const bedSize = `${printer.bed_x}x${printer.bed_y}x${printer.bed_z}`;
+    empty.classList.add('hidden');
+    list.innerHTML = printers.map(p => {
+        const color = brandColors[p.brand] || '#666';
+        const progress = calcProgress(p);
+        const timeLeft = calcTimeLeft(p);
         
         let progressHtml = '';
-        if ((printer.status === 'BUSY' || printer.status === 'PAUSED') && printer.current_item_name) {
+        if ((p.status === 'BUSY' || p.status === 'PAUSED') && p.current_item_name) {
             progressHtml = `
-                <div class="print-progress">
-                    <div class="print-model-name">
-                        <canvas class="inline-icon" data-draw="printer-small" width="16" height="16"></canvas>
-                        <span>${escapeHtml(printer.current_item_name)}</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${progress}%"></div>
-                    </div>
+                <div class="printer-progress">
+                    <div class="progress-model">${esc(p.current_item_name)}</div>
+                    <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
                     <div class="progress-info">
-                        <span>${progress}%</span>
-                        <span>${timeLeft ? `Осталось: ${timeLeft}` : ''}</span>
+                        <span>${progress.toFixed(1)}%</span>
+                        <span>${timeLeft}</span>
                     </div>
                 </div>
             `;
         }
         
         return `
-            <div class="printer-card" data-printer-id="${printer.id}">
-                <div class="printer-header">
-                    <canvas class="printer-brand-icon" data-brand="${printer.brand}" width="48" height="48"></canvas>
-                    <div class="printer-info">
-                        <div class="printer-name">${escapeHtml(printer.name)}</div>
-                        <div class="printer-model">${escapeHtml(printer.brand)} ${escapeHtml(printer.model_name)}</div>
-                        <div class="printer-bed">
-                            <canvas class="inline-icon" data-draw="ruler" width="14" height="14"></canvas>
-                            ${bedSize} мм
-                        </div>
-                    </div>
-                    <div class="status-badge ${printer.status.toLowerCase()}">${getStatusText(printer.status)}</div>
+            <div class="printer-card" data-id="${p.id}">
+                <div class="printer-icon" style="background:${color}">${p.brand[0]}</div>
+                <div class="printer-info">
+                    <div class="printer-name">${esc(p.name)}</div>
+                    <div class="printer-model">${esc(p.brand)} ${esc(p.model_name)} · ${p.bed_x}×${p.bed_y}</div>
+                    ${progressHtml}
                 </div>
-                ${progressHtml}
+                <div class="printer-status ${p.status.toLowerCase()}">${getStatusText(p.status)}</div>
             </div>
         `;
     }).join('');
     
-    // Draw brand icons
-    container.querySelectorAll('.printer-brand-icon').forEach(canvas => {
-        const ctx = canvas.getContext('2d');
-        const brand = canvas.dataset.brand;
-        IconDrawer.drawBrandIcon(ctx, 0, 0, 48, brand);
+    list.querySelectorAll('.printer-card').forEach(card => {
+        card.addEventListener('click', () => showPrinterSheet(parseInt(card.dataset.id)));
     });
+}
+
+function sortPrinters(printers) {
+    const statusOrder = { FREE: 0, BUSY: 1, PAUSED: 2, REPAIR: 3 };
     
-    // Draw inline icons
-    container.querySelectorAll('.inline-icon').forEach(canvas => {
-        const ctx = canvas.getContext('2d');
-        const draw = canvas.dataset.draw;
-        if (draw === 'printer-small') {
-            IconDrawer.drawPrinter(ctx, 0, 0, 16, IconDrawer.colors.busy);
-        } else if (draw === 'ruler') {
-            IconDrawer.drawRuler(ctx, 0, 0, 14);
-        }
-    });
-    
-    // Add click handlers
-    container.querySelectorAll('.printer-card').forEach(card => {
-        card.addEventListener('click', () => {
-            const printerId = parseInt(card.dataset.printerId);
-            showPrinterSheet(printerId);
-        });
-    });
+    switch (state.sortMode) {
+        case 'free':
+            return printers.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+        case 'busy':
+            return printers.sort((a, b) => statusOrder[b.status] - statusOrder[a.status]);
+        case 'fast':
+            return printers.sort((a, b) => (a.bed_x * a.bed_y) - (b.bed_x * b.bed_y));
+        case 'slow':
+            return printers.sort((a, b) => (b.bed_x * b.bed_y) - (a.bed_x * a.bed_y));
+        case 'name':
+            return printers.sort((a, b) => a.name.localeCompare(b.name));
+        default:
+            return printers;
+    }
 }
 
 function renderModels() {
-    const container = document.getElementById('models-list');
-    const emptyState = document.getElementById('models-empty');
+    const list = document.getElementById('models-list');
+    const empty = document.getElementById('models-empty');
+    const count = document.getElementById('models-count');
     
-    const sortedModels = sortModels(state.models, state.sortOrder);
+    count.textContent = state.models.length;
     
-    if (sortedModels.length === 0) {
-        container.innerHTML = '';
-        emptyState.classList.remove('hidden');
+    if (!state.models.length) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
         return;
     }
     
-    emptyState.classList.add('hidden');
-    
-    container.innerHTML = sortedModels.map(model => {
-        const size = formatSize(model.size_x, model.size_y, model.size_z);
-        const time = formatTime(model.estimated_time);
+    empty.classList.add('hidden');
+    list.innerHTML = state.models.map(m => {
+        const size = m.size_x ? `${m.size_x.toFixed(0)}×${m.size_y.toFixed(0)}×${m.size_z.toFixed(0)}mm` : '';
+        const time = `${m.estimated_time.toFixed(1)}h`;
+        const meta = [size, time].filter(Boolean).join(' · ');
         
         return `
-            <div class="model-card" data-model-id="${model.id}">
-                <div class="model-header">
-                    <canvas class="model-icon-canvas" width="40" height="40"></canvas>
-                    <div class="model-info">
-                        <div class="model-name">${escapeHtml(model.item_name)}</div>
-                        <div class="model-details">
-                            ${size ? `<span class="model-detail"><canvas class="micro-icon" data-draw="ruler" width="12" height="12"></canvas> ${size} мм</span>` : ''}
-                            <span class="model-detail"><canvas class="micro-icon" data-draw="clock" width="12" height="12"></canvas> ${time}</span>
-                        </div>
-                    </div>
+            <div class="model-card">
+                <div class="model-icon">${Icons.cube}</div>
+                <div class="model-info">
+                    <div class="model-name">${esc(m.item_name)}</div>
+                    <div class="model-meta">${meta}</div>
                 </div>
             </div>
         `;
     }).join('');
-    
-    // Draw model icons
-    container.querySelectorAll('.model-icon-canvas').forEach(canvas => {
-        const ctx = canvas.getContext('2d');
-        IconDrawer.drawModel(ctx, 4, 4, 32, IconDrawer.colors.primary);
-    });
-    
-    // Draw micro icons
-    container.querySelectorAll('.micro-icon').forEach(canvas => {
-        const ctx = canvas.getContext('2d');
-        const draw = canvas.dataset.draw;
-        if (draw === 'ruler') {
-            IconDrawer.drawRuler(ctx, 0, 0, 12);
-        } else if (draw === 'clock') {
-            IconDrawer.drawClock(ctx, 0, 0, 12);
-        }
-    });
 }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+function renderOrders() {
+    const list = document.getElementById('orders-list');
+    const empty = document.getElementById('orders-empty');
+    const count = document.getElementById('orders-count');
+    
+    count.textContent = state.orders.length;
+    
+    if (!state.orders.length) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+    }
+    
+    empty.classList.add('hidden');
+    list.innerHTML = state.orders.map(o => {
+        const progress = o.quantity_needed > 0 ? (o.quantity_done / o.quantity_needed * 100) : 0;
+        
+        return `
+            <div class="order-card">
+                <div class="order-header">
+                    <div class="order-title">${esc(o.title)}</div>
+                    <div class="order-progress-text">${o.quantity_done}/${o.quantity_needed}</div>
+                </div>
+                ${o.item_name ? `<div class="order-model">${esc(o.item_name)}</div>` : ''}
+                <div class="order-bar"><div class="order-bar-fill" style="width:${progress}%"></div></div>
+            </div>
+        `;
+    }).join('');
 }
 
-// ===================== BOTTOM SHEET =====================
+function renderProfile() {
+    if (!state.user) return;
+    
+    const avatar = document.getElementById('profile-avatar');
+    const name = document.getElementById('profile-name');
+    const id = document.getElementById('profile-id');
+    const plan = document.getElementById('profile-plan');
+    const limitFill = document.getElementById('limit-fill');
+    const limitText = document.getElementById('limit-text');
+    
+    const userData = tg?.initDataUnsafe?.user;
+    const displayName = userData?.first_name || state.user.first_name || 'User';
+    const initial = displayName[0].toUpperCase();
+    
+    if (userData?.photo_url) {
+        avatar.innerHTML = `<img src="${userData.photo_url}" alt="">`;
+    } else {
+        avatar.textContent = initial;
+    }
+    
+    name.textContent = displayName;
+    id.textContent = `ID: ${state.user.telegram_id}`;
+    
+    const planName = state.user.plan || 'FREE';
+    plan.textContent = planName;
+    plan.className = 'settings-value plan-badge ' + planName.toLowerCase();
+    
+    const limits = { FREE: 1, PRO: 5, STUDIO: 999 };
+    const limit = limits[planName] || 1;
+    const printerCount = state.printers.length;
+    const percent = Math.min(100, (printerCount / limit) * 100);
+    
+    limitFill.style.width = `${percent}%`;
+    limitText.textContent = limit >= 999 ? `${printerCount}/∞` : `${printerCount}/${limit}`;
+}
+
+function updateAvatar() {
+    const tabAvatar = document.getElementById('tab-avatar');
+    const userData = tg?.initDataUnsafe?.user;
+    
+    if (userData?.photo_url) {
+        tabAvatar.innerHTML = `<img src="${userData.photo_url}" alt="">`;
+    } else {
+        tabAvatar.innerHTML = Icons.user;
+    }
+}
+
+// ===================== SHEET =====================
 
 function showPrinterSheet(printerId) {
     const printer = state.printers.find(p => p.id === printerId);
     if (!printer) return;
     
-    const sheet = document.getElementById('bottom-sheet');
-    const body = document.getElementById('bottom-sheet-body');
+    const sheet = document.getElementById('sheet');
+    const body = document.getElementById('sheet-body');
+    const color = brandColors[printer.brand] || '#666';
     
-    const progress = calculateProgress(printer.last_start, printer.duration_hours);
-    const timeLeft = formatTimeLeft(printer.last_start, printer.duration_hours);
-    const bedSize = `${printer.bed_x}x${printer.bed_y}x${printer.bed_z}`;
+    const progress = calcProgress(printer);
+    const timeLeft = calcTimeLeft(printer);
     
     let progressHtml = '';
     if ((printer.status === 'BUSY' || printer.status === 'PAUSED') && printer.current_item_name) {
         progressHtml = `
-            <div class="sheet-progress">
-                <div class="sheet-progress-header">
-                    <span class="sheet-progress-model">${escapeHtml(printer.current_item_name)}</span>
-                    <span class="sheet-progress-percent">${progress}%</span>
+            <div class="sheet-stat" style="grid-column: span 2">
+                <div class="sheet-stat-label">${esc(printer.current_item_name)}</div>
+                <div style="margin-top:8px">
+                    <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
+                    <div class="progress-info" style="margin-top:4px">
+                        <span>${progress.toFixed(1)}%</span>
+                        <span>${timeLeft}</span>
+                    </div>
                 </div>
-                <div class="sheet-progress-bar">
-                    <div class="sheet-progress-fill" style="width: ${progress}%"></div>
-                </div>
-                ${timeLeft ? `<div class="sheet-progress-time">Осталось: ${timeLeft}</div>` : ''}
             </div>
         `;
     }
@@ -768,267 +448,159 @@ function showPrinterSheet(printerId) {
     let actionsHtml = '';
     switch (printer.status) {
         case 'FREE':
-            actionsHtml = `
-                <button class="sheet-btn sheet-btn-danger" data-action="repair">
-                    <canvas class="btn-icon" data-draw="repair" width="18" height="18"></canvas> На ремонт
-                </button>
-            `;
+            actionsHtml = `<button class="sheet-btn danger" data-action="repair">Set Repair</button>`;
             break;
         case 'BUSY':
             actionsHtml = `
-                <button class="sheet-btn sheet-btn-warning" data-action="pause">
-                    <canvas class="btn-icon" data-draw="pause" width="18" height="18"></canvas> Пауза
-                </button>
-                <button class="sheet-btn sheet-btn-success" data-action="finish">
-                    <canvas class="btn-icon" data-draw="finish" width="18" height="18"></canvas> Завершить печать
-                </button>
+                <button class="sheet-btn warning" data-action="pause">Pause</button>
+                <button class="sheet-btn success" data-action="finish">Finish</button>
             `;
             break;
         case 'PAUSED':
             actionsHtml = `
-                <button class="sheet-btn sheet-btn-primary" data-action="resume">
-                    <canvas class="btn-icon" data-draw="resume" width="18" height="18"></canvas> Продолжить
-                </button>
-                <button class="sheet-btn sheet-btn-success" data-action="finish">
-                    <canvas class="btn-icon" data-draw="finish" width="18" height="18"></canvas> Завершить печать
-                </button>
+                <button class="sheet-btn primary" data-action="resume">Resume</button>
+                <button class="sheet-btn success" data-action="finish">Finish</button>
             `;
             break;
         case 'REPAIR':
-            actionsHtml = `
-                <button class="sheet-btn sheet-btn-success" data-action="repair_done">
-                    <canvas class="btn-icon" data-draw="finish" width="18" height="18"></canvas> Снять с ремонта
-                </button>
-            `;
+            actionsHtml = `<button class="sheet-btn success" data-action="repair_done">End Repair</button>`;
             break;
     }
     
     body.innerHTML = `
         <div class="sheet-header">
-            <canvas class="sheet-brand-icon" data-brand="${printer.brand}" width="56" height="56"></canvas>
+            <div class="sheet-icon" style="background:${color}">${printer.brand[0]}</div>
             <div>
-                <div class="sheet-title">${escapeHtml(printer.name)}</div>
-                <div class="sheet-subtitle">${escapeHtml(printer.brand)} ${escapeHtml(printer.model_name)}</div>
+                <div class="sheet-title">${esc(printer.name)}</div>
+                <div class="sheet-subtitle">${esc(printer.brand)} ${esc(printer.model_name)}</div>
             </div>
         </div>
         
         <div class="sheet-stats">
             <div class="sheet-stat">
-                <div class="sheet-stat-value">${bedSize}</div>
-                <div class="sheet-stat-label">Размер стола (мм)</div>
+                <div class="sheet-stat-value">${printer.bed_x}×${printer.bed_y}×${printer.bed_z}</div>
+                <div class="sheet-stat-label">Bed size (mm)</div>
             </div>
             <div class="sheet-stat">
                 <div class="sheet-stat-value">${getStatusText(printer.status)}</div>
-                <div class="sheet-stat-label">Статус</div>
+                <div class="sheet-stat-label">Status</div>
             </div>
+            ${progressHtml}
         </div>
-        
-        ${progressHtml}
         
         <div class="sheet-actions">
             ${actionsHtml}
-            <button class="sheet-btn sheet-btn-secondary" data-action="close">
-                Закрыть
-            </button>
+            <button class="sheet-btn secondary" data-action="close">Close</button>
         </div>
     `;
     
-    // Draw brand icon
-    const brandCanvas = body.querySelector('.sheet-brand-icon');
-    if (brandCanvas) {
-        const ctx = brandCanvas.getContext('2d');
-        IconDrawer.drawBrandIcon(ctx, 0, 0, 56, printer.brand);
-    }
-    
-    // Draw button icons
-    body.querySelectorAll('.btn-icon').forEach(canvas => {
-        const ctx = canvas.getContext('2d');
-        const draw = canvas.dataset.draw;
-        ctx.clearRect(0, 0, 18, 18);
-        switch(draw) {
-            case 'pause':
-                IconDrawer.drawStatusPaused(ctx, 0, 0, 18);
-                break;
-            case 'resume':
-                IconDrawer.drawStatusBusy(ctx, 0, 0, 18);
-                break;
-            case 'finish':
-                IconDrawer.drawStatusFree(ctx, 0, 0, 18);
-                break;
-            case 'repair':
-                IconDrawer.drawStatusRepair(ctx, 0, 0, 18);
-                break;
-        }
-    });
-    
-    // Add action handlers
     body.querySelectorAll('[data-action]').forEach(btn => {
         btn.addEventListener('click', async () => {
             const action = btn.dataset.action;
-            
-            if (action === 'close') {
-                hideSheet();
-                return;
-            }
+            if (action === 'close') return hideSheet();
             
             btn.disabled = true;
-            btn.style.opacity = '0.6';
-            
             try {
                 await printerAction(printerId, action);
                 showToast(getActionMessage(action));
                 hideSheet();
-                
-                if (!USE_MOCK) {
-                    await loadData();
-                }
-                
-                renderPrinters();
-                renderStats();
-            } catch (error) {
-                console.error('Action error:', error);
-                showToast('Ошибка. Попробуйте снова.');
-            } finally {
-                btn.disabled = false;
-                btn.style.opacity = '1';
+                if (!USE_MOCK) await loadData();
+                render();
+            } catch (e) {
+                showToast('Error');
             }
+            btn.disabled = false;
         });
     });
     
     sheet.classList.remove('hidden');
-    
-    // Close on overlay click
-    sheet.querySelector('.bottom-sheet-overlay').onclick = hideSheet;
+    sheet.querySelector('.sheet-overlay').onclick = hideSheet;
 }
 
 function hideSheet() {
-    document.getElementById('bottom-sheet').classList.add('hidden');
+    document.getElementById('sheet').classList.add('hidden');
+}
+
+// ===================== UTILS =====================
+
+function calcProgress(printer) {
+    if (!printer.last_start || !printer.duration_hours) return 0;
+    const start = new Date(printer.last_start).getTime();
+    const elapsed = (Date.now() - start) / 3600000;
+    return Math.min(100, (elapsed / printer.duration_hours) * 100);
+}
+
+function calcTimeLeft(printer) {
+    if (!printer.last_start || !printer.duration_hours) return '';
+    const start = new Date(printer.last_start).getTime();
+    const elapsed = (Date.now() - start) / 3600000;
+    const remaining = Math.max(0, printer.duration_hours - elapsed);
+    if (remaining >= 1) return `${Math.floor(remaining)}h ${Math.round((remaining % 1) * 60)}m left`;
+    return `${Math.round(remaining * 60)}m left`;
+}
+
+function getStatusText(status) {
+    return { FREE: 'Free', BUSY: 'Printing', PAUSED: 'Paused', REPAIR: 'Repair' }[status] || status;
 }
 
 function getActionMessage(action) {
-    const messages = {
-        'pause': 'Печать приостановлена',
-        'resume': 'Печать продолжена',
-        'finish': 'Печать завершена',
-        'repair': 'Отправлен на ремонт',
-        'repair_done': 'Ремонт завершён'
-    };
-    return messages[action] || 'Готово';
+    return { pause: 'Paused', resume: 'Resumed', finish: 'Finished', repair: 'Set to repair', repair_done: 'Repair done' }[action] || 'Done';
+}
+
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 // ===================== TOAST =====================
 
-let toastTimeout = null;
+let toastTimer = null;
 
-function showToast(message) {
+function showToast(msg) {
     const toast = document.getElementById('toast');
-    toast.textContent = message;
+    toast.textContent = msg;
     toast.classList.remove('hidden');
-    
-    if (toastTimeout) {
-        clearTimeout(toastTimeout);
-    }
-    
-    toastTimeout = setTimeout(() => {
-        toast.classList.add('hidden');
-    }, 3000);
-}
-
-// ===================== TABS =====================
-
-function initTabs() {
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            const tabName = tab.dataset.tab;
-            
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.getElementById(`${tabName}-tab`).classList.add('active');
-            
-            state.currentTab = tabName;
-        });
-    });
-}
-
-function initSortToggle() {
-    const btn = document.getElementById('sort-btn');
-    const text = document.getElementById('sort-text');
-    
-    if (!btn || !text) {
-        console.warn('Sort toggle elements not found');
-        return;
-    }
-    
-    btn.addEventListener('click', () => {
-        state.sortOrder = state.sortOrder === 'small' ? 'large' : 'small';
-        text.textContent = state.sortOrder === 'small' ? 'Маленькие' : 'Большие';
-        
-        renderPrinters();
-        renderModels();
-    });
-}
-
-// ===================== DATA LOADING =====================
-
-async function loadData() {
-    try {
-        const data = await fetchBootstrap();
-        state.user = data.user;
-        state.printers = data.printers;
-        state.models = data.models;
-        
-        renderPlanBadge();
-        renderStats();
-        renderPrinters();
-        renderModels();
-        
-        state.isLoading = false;
-        document.getElementById('loading').classList.add('hidden');
-    } catch (error) {
-        console.error('Load error:', error);
-        showToast('Ошибка загрузки данных');
-        document.getElementById('loading').classList.add('hidden');
-    }
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.add('hidden'), 3000);
 }
 
 // ===================== AUTO REFRESH =====================
 
-let refreshInterval = null;
-
 function startAutoRefresh() {
-    refreshInterval = setInterval(async () => {
-        if (document.visibilityState === 'visible' && !state.isLoading) {
-            try {
-                const data = await fetchBootstrap();
-                state.user = data.user;
-                state.printers = data.printers;
-                state.models = data.models;
-                
-                renderStats();
-                renderPrinters();
-                renderModels();
-            } catch (error) {
-                console.error('Refresh error:', error);
-            }
+    setInterval(() => {
+        if (document.visibilityState === 'visible') {
+            loadData();
         }
     }, 30000);
 }
 
-// ===================== INIT =====================
+// ===================== MOCK DATA =====================
 
-document.addEventListener('DOMContentLoaded', () => {
-    initTelegram();
-    initIcons();
-    initTabs();
-    initSortToggle();
-    loadData();
-    startAutoRefresh();
-});
+function getMockData() {
+    return {
+        user: { id: 1, telegram_id: 123456789, first_name: "User", plan: "PRO" },
+        printers: [
+            { id: 1, name: "Ender 3 #1", status: "BUSY", brand: "Creality", model_name: "Ender 3 V2", bed_x: 220, bed_y: 220, bed_z: 250, current_item_name: "Phone Stand", last_start: new Date(Date.now() - 2*3600000).toISOString(), duration_hours: 4 },
+            { id: 2, name: "Bambu P1S", status: "FREE", brand: "Bambu Lab", model_name: "P1S", bed_x: 256, bed_y: 256, bed_z: 256 },
+            { id: 3, name: "Prusa MK4", status: "PAUSED", brand: "Prusa", model_name: "MK4", bed_x: 250, bed_y: 210, bed_z: 220, current_item_name: "Arduino Case", last_start: new Date(Date.now() - 3*3600000).toISOString(), duration_hours: 6 },
+            { id: 4, name: "Voron 2.4", status: "BUSY", brand: "Voron", model_name: "V2.4 350", bed_x: 350, bed_y: 350, bed_z: 330, current_item_name: "Large Vase", last_start: new Date(Date.now() - 1*3600000).toISOString(), duration_hours: 8 },
+            { id: 5, name: "K1 Max", status: "REPAIR", brand: "Creality", model_name: "K1 Max", bed_x: 300, bed_y: 300, bed_z: 300 },
+        ],
+        models: [
+            { id: 1, item_name: "Phone Stand.stl", estimated_time: 4, size_x: 120, size_y: 80, size_z: 15 },
+            { id: 2, item_name: "Arduino Case.stl", estimated_time: 6, size_x: 100, size_y: 70, size_z: 40 },
+            { id: 3, item_name: "Vase.stl", estimated_time: 8, size_x: 150, size_y: 150, size_z: 200 },
+            { id: 4, item_name: "Keychain.gcode", estimated_time: 0.5, size_x: 40, size_y: 30, size_z: 5 },
+        ],
+        orders: [
+            { id: 1, title: "Phone Stands Order", item_name: "Phone Stand.stl", quantity_needed: 10, quantity_done: 3 },
+            { id: 2, title: "Keychains Batch", item_name: "Keychain.gcode", quantity_needed: 50, quantity_done: 12 },
+        ]
+    };
+}
 
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        loadData();
-    }
-});
+// ===================== START =====================
+
+document.addEventListener('DOMContentLoaded', init);
