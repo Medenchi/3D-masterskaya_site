@@ -5,7 +5,7 @@
 
 // ===================== CONFIGURATION =====================
 
-const API_BASE = "https://2e01c506c6ef57.lhr.life"; // Replace with your backend URL
+const API_BASE = "relative-joyce-3dprintable-b0155a87.koyeb.app"; // Replace with your backend URL
 const USE_MOCK = false; // Set to false in production
 
 // ===================== MOCK DATA =====================
