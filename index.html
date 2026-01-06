@@ -1,1893 +1,1448 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PrintFarm</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        /* ============================================
-           PrintFarm Mini App - Telegram Native 2026
-           Version: 2.6.7
-           Developer: @denchy
-           ============================================ */
-
-        :root {
-            --bg-primary: #f1f2f6;
-            --bg-secondary: #ffffff;
-            --bg-tertiary: #e8e9ed;
-            --text-primary: #1c1c1e;
-            --text-secondary: #8e8e93;
-            --text-tertiary: #c7c7cc;
-            --accent: #007aff;
-            --accent-light: rgba(0, 122, 255, 0.1);
-            --success: #34c759;
-            --warning: #ff9500;
-            --danger: #ff3b30;
-            --separator: rgba(60, 60, 67, 0.12);
-            --card-shadow: none;
-            --blur-bg: rgba(255, 255, 255, 0.85);
-            --tab-bar-height: 83px;
-            --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-        }
-
-        .theme-dark {
-            --bg-primary: #000000;
-            --bg-secondary: #1c1c1e;
-            --bg-tertiary: #2c2c2e;
-            --text-primary: #ffffff;
-            --text-secondary: #8e8e93;
-            --text-tertiary: #48484a;
-            --separator: rgba(84, 84, 88, 0.65);
-            --blur-bg: rgba(28, 28, 30, 0.85);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        body {
-            font-family: -apple-system, 'SF Pro Display', 'SF Pro Text', system-ui, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
-            overflow-x: hidden;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-
-        /* ============================================
-           MAIN CONTAINER
-           ============================================ */
-
-        .app-container {
-            padding-bottom: calc(var(--tab-bar-height) + var(--safe-area-bottom));
-            min-height: 100vh;
-        }
-
-        .screen {
-            display: none;
-            animation: fadeIn 0.2s ease;
-        }
-
-        .screen.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* ============================================
-           HEADER
-           ============================================ */
-
-        .header {
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: var(--blur-bg);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            padding: 12px 16px;
-            border-bottom: 0.5px solid var(--separator);
-        }
-
-        .header-title {
-            font-size: 17px;
-            font-weight: 600;
-            text-align: center;
-        }
-
-        .header-large {
-            padding: 16px 16px 12px;
-            background: transparent;
-            backdrop-filter: none;
-            border-bottom: none;
-        }
-
-        .header-large .header-title {
-            font-size: 34px;
-            font-weight: 700;
-            text-align: left;
-        }
-
-        .header-actions {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        /* ============================================
-           CARDS & SECTIONS
-           ============================================ */
-
-        .section {
-            margin: 20px 16px;
-        }
-
-        .section-header {
-            font-size: 13px;
-            font-weight: 400;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: -0.08px;
-            padding: 0 16px 8px;
-        }
-
-        .card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .card-item {
-            display: flex;
-            align-items: center;
-            padding: 12px 16px;
-            min-height: 44px;
-            position: relative;
-            cursor: pointer;
-            transition: background 0.15s ease;
-        }
-
-        .card-item:active {
-            background: var(--bg-tertiary);
-        }
-
-        .card-item:not(:last-child)::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 56px;
-            right: 0;
-            height: 0.5px;
-            background: var(--separator);
-        }
-
-        .card-item.no-icon:not(:last-child)::after {
-            left: 16px;
-        }
-
-        /* ============================================
-           ICONS (SVG Generated)
-           ============================================ */
-
-        .icon {
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 12px;
-            flex-shrink: 0;
-        }
-
-        .icon svg {
-            width: 16px;
-            height: 16px;
-            fill: white;
-        }
-
-        .icon-printer { background: linear-gradient(135deg, #5856d6, #af52de); }
-        .icon-model { background: linear-gradient(135deg, #ff9500, #ff3b30); }
-        .icon-queue { background: linear-gradient(135deg, #34c759, #30d158); }
-        .icon-profile { background: linear-gradient(135deg, #007aff, #5ac8fa); }
-        .icon-settings { background: linear-gradient(135deg, #8e8e93, #636366); }
-
-        /* ============================================
-           PRINTER CARD
-           ============================================ */
-
-        .printer-card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
-        }
-
-        .printer-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 12px;
-        }
-
-        .printer-info h3 {
-            font-size: 17px;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-
-        .printer-info p {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .status-badge {
-            font-size: 12px;
-            font-weight: 500;
-            padding: 4px 10px;
-            border-radius: 20px;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-
-        .status-free {
-            background: rgba(52, 199, 89, 0.15);
-            color: var(--success);
-        }
-
-        .status-busy {
-            background: rgba(0, 122, 255, 0.15);
-            color: var(--accent);
-        }
-
-        .status-paused {
-            background: rgba(255, 149, 0, 0.15);
-            color: var(--warning);
-        }
-
-        .status-repair {
-            background: rgba(255, 59, 48, 0.15);
-            color: var(--danger);
-        }
-
-        .printer-stats {
-            display: flex;
-            gap: 16px;
-            margin-bottom: 12px;
-        }
-
-        .printer-stat {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .printer-stat span {
-            color: var(--text-primary);
-            font-weight: 500;
-        }
-
-        .progress-container {
-            margin-top: 12px;
-        }
-
-        .progress-bar {
-            height: 4px;
-            background: var(--bg-tertiary);
-            border-radius: 2px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: var(--accent);
-            border-radius: 2px;
-            transition: width 0.3s ease;
-        }
-
-        .progress-info {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        /* ============================================
-           MODEL CARD
-           ============================================ */
-
-        .models-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            padding: 0 16px;
-        }
-
-        .model-card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            overflow: hidden;
-            cursor: pointer;
-            transition: transform 0.2s ease;
-        }
-
-        .model-card:active {
-            transform: scale(0.98);
-        }
-
-        .model-preview {
-            width: 100%;
-            aspect-ratio: 1;
-            background: var(--bg-tertiary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
-
-        .model-preview svg {
-            width: 48px;
-            height: 48px;
-            fill: var(--text-tertiary);
-        }
-
-        .model-preview img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .model-info {
-            padding: 12px;
-        }
-
-        .model-info h4 {
-            font-size: 15px;
-            font-weight: 600;
-            margin-bottom: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .model-info p {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        /* ============================================
-           FILTER BUTTON & POPOVER
-           ============================================ */
-
-        .filter-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            background: var(--bg-tertiary);
-            border: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: background 0.15s ease;
-        }
-
-        .filter-btn:active {
-            background: var(--separator);
-        }
-
-        .filter-btn svg {
-            width: 18px;
-            height: 18px;
-            fill: var(--text-primary);
-        }
-
-        .popover-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.2s ease;
-        }
-
-        .popover-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .popover {
-            position: absolute;
-            top: 60px;
-            right: 16px;
-            background: var(--bg-secondary);
-            border-radius: 14px;
-            min-width: 200px;
-            overflow: hidden;
-            transform: scale(0.9) translateY(-10px);
-            opacity: 0;
-            transition: all 0.2s ease;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-        }
-
-        .popover-overlay.active .popover {
-            transform: scale(1) translateY(0);
-            opacity: 1;
-        }
-
-        .popover-item {
-            padding: 12px 16px;
-            font-size: 17px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: background 0.15s ease;
-        }
-
-        .popover-item:active {
-            background: var(--bg-tertiary);
-        }
-
-        .popover-item:not(:last-child) {
-            border-bottom: 0.5px solid var(--separator);
-        }
-
-        .popover-item.selected::after {
-            content: '';
-            width: 20px;
-            height: 20px;
-            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23007aff'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E") center/contain no-repeat;
-        }
-
-        /* ============================================
-           ACTION SHEET
-           ============================================ */
-
-        .action-sheet-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .action-sheet-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .action-sheet {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: transparent;
-            z-index: 1001;
-            padding: 0 8px calc(8px + var(--safe-area-bottom));
-            transform: translateY(100%);
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .action-sheet-overlay.active .action-sheet {
-            transform: translateY(0);
-        }
-
-        .action-sheet-content {
-            background: var(--bg-secondary);
-            border-radius: 14px;
-            overflow: hidden;
-            margin-bottom: 8px;
-        }
-
-        .action-sheet-header {
-            padding: 16px;
-            text-align: center;
-            border-bottom: 0.5px solid var(--separator);
-        }
-
-        .action-sheet-header h3 {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-        }
-
-        .action-sheet-header p {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .action-sheet-item {
-            padding: 18px 16px;
-            font-size: 20px;
-            text-align: center;
-            cursor: pointer;
-            color: var(--accent);
-            border-bottom: 0.5px solid var(--separator);
-            transition: background 0.15s ease;
-        }
-
-        .action-sheet-item:last-child {
-            border-bottom: none;
-        }
-
-        .action-sheet-item:active {
-            background: var(--bg-tertiary);
-        }
-
-        .action-sheet-item.danger {
-            color: var(--danger);
-        }
-
-        .action-sheet-cancel {
-            background: var(--bg-secondary);
-            border-radius: 14px;
-            padding: 18px 16px;
-            font-size: 20px;
-            font-weight: 600;
-            text-align: center;
-            cursor: pointer;
-            color: var(--accent);
-        }
-
-        .action-sheet-cancel:active {
-            background: var(--bg-tertiary);
-        }
-
-        /* ============================================
-           PROFILE SCREEN
-           ============================================ */
-
-        .profile-header {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 24px 16px;
-        }
-
-        .profile-avatar {
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            background: var(--bg-tertiary);
-            margin-bottom: 16px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .profile-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .profile-avatar svg {
-            width: 48px;
-            height: 48px;
-            fill: var(--text-tertiary);
-        }
-
-        .profile-name {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-
-        .profile-id {
-            font-size: 15px;
-            color: var(--text-secondary);
-        }
-
-        .subscription-card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 16px;
-            margin: 0 16px 20px;
-        }
-
-        .subscription-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-
-        .subscription-plan {
-            font-size: 17px;
-            font-weight: 600;
-        }
-
-        .subscription-badge {
-            font-size: 12px;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 20px;
-            background: var(--accent-light);
-            color: var(--accent);
-        }
-
-        .subscription-limits {
-            margin-bottom: 16px;
-        }
-
-        .limit-item {
-            margin-bottom: 12px;
-        }
-
-        .limit-item:last-child {
-            margin-bottom: 0;
-        }
-
-        .limit-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 6px;
-            font-size: 13px;
-        }
-
-        .limit-name {
-            color: var(--text-secondary);
-        }
-
-        .limit-value {
-            color: var(--text-primary);
-            font-weight: 500;
-        }
-
-        .limit-bar {
-            height: 6px;
-            background: var(--bg-tertiary);
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .limit-fill {
-            height: 100%;
-            background: var(--accent);
-            border-radius: 3px;
-        }
-
-        .limit-fill.warning {
-            background: var(--warning);
-        }
-
-        .limit-fill.danger {
-            background: var(--danger);
-        }
-
-        .subscription-btn {
-            width: 100%;
-            padding: 12px;
-            background: var(--accent);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 17px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.15s ease;
-        }
-
-        .subscription-btn:active {
-            opacity: 0.8;
-        }
-
-        .profile-footer {
-            text-align: center;
-            padding: 24px 16px;
-            color: var(--text-tertiary);
-            font-size: 13px;
-        }
-
-        .profile-footer a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-
-        .profile-footer p {
-            margin-bottom: 8px;
-        }
-
-        /* ============================================
-           ORDERS SCREEN
-           ============================================ */
-
-        .order-card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 16px;
-            margin: 0 16px 12px;
-        }
-
-        .order-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }
-
-        .order-number {
-            font-size: 17px;
-            font-weight: 600;
-        }
-
-        .order-date {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .order-items {
-            margin-bottom: 12px;
-        }
-
-        .order-item {
-            display: flex;
-            align-items: center;
-            padding: 8px 0;
-        }
-
-        .order-item:not(:last-child) {
-            border-bottom: 0.5px solid var(--separator);
-        }
-
-        .order-item-preview {
-            width: 44px;
-            height: 44px;
-            background: var(--bg-tertiary);
-            border-radius: 8px;
-            margin-right: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .order-item-preview svg {
-            width: 24px;
-            height: 24px;
-            fill: var(--text-tertiary);
-        }
-
-        .order-item-info {
-            flex: 1;
-        }
-
-        .order-item-name {
-            font-size: 15px;
-            font-weight: 500;
-            margin-bottom: 2px;
-        }
-
-        .order-item-details {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .order-status {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-        }
-
-        .order-status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
-
-        .order-status-dot.pending {
-            background: var(--warning);
-        }
-
-        .order-status-dot.printing {
-            background: var(--accent);
-        }
-
-        .order-status-dot.done {
-            background: var(--success);
-        }
-
-        /* ============================================
-           TAB BAR
-           ============================================ */
-
-        .tab-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: var(--tab-bar-height);
-            background: var(--blur-bg);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border-top: 0.5px solid var(--separator);
-            display: flex;
-            justify-content: space-around;
-            align-items: flex-start;
-            padding-top: 8px;
-            padding-bottom: var(--safe-area-bottom);
-            z-index: 500;
-        }
-
-        .tab-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 4px 16px;
-            cursor: pointer;
-            transition: opacity 0.15s ease;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        .tab-item svg {
-            width: 28px;
-            height: 28px;
-            fill: var(--text-secondary);
-            margin-bottom: 4px;
-            transition: fill 0.15s ease;
-        }
-
-        .tab-item span {
-            font-size: 10px;
-            color: var(--text-secondary);
-            transition: color 0.15s ease;
-        }
-
-        .tab-item.active svg {
-            fill: var(--accent);
-        }
-
-        .tab-item.active span {
-            color: var(--accent);
-        }
-
-        .tab-avatar {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            background: var(--bg-tertiary);
-            margin-bottom: 4px;
-            overflow: hidden;
-            border: 2px solid transparent;
-            transition: border-color 0.15s ease;
-        }
-
-        .tab-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .tab-item.active .tab-avatar {
-            border-color: var(--accent);
-        }
-
-        /* ============================================
-           EMPTY STATE
-           ============================================ */
-
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 60px 32px;
-            text-align: center;
-        }
-
-        .empty-state svg {
-            width: 80px;
-            height: 80px;
-            fill: var(--text-tertiary);
-            margin-bottom: 24px;
-        }
-
-        .empty-state h3 {
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .empty-state p {
-            font-size: 15px;
-            color: var(--text-secondary);
-            line-height: 1.4;
-        }
-
-        /* ============================================
-           ERROR STATE
-           ============================================ */
-
-        .error-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 60px 32px;
-            text-align: center;
-            min-height: 60vh;
-        }
-
-        .error-state svg {
-            width: 64px;
-            height: 64px;
-            fill: var(--danger);
-            margin-bottom: 24px;
-        }
-
-        .error-state h3 {
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .error-state p {
-            font-size: 15px;
-            color: var(--text-secondary);
-            margin-bottom: 24px;
-        }
-
-        .retry-btn {
-            padding: 12px 32px;
-            background: var(--accent);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 17px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .retry-btn:active {
-            opacity: 0.8;
-        }
-
-        /* ============================================
-           LOADING
-           ============================================ */
-
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: var(--bg-primary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-            transition: opacity 0.3s ease;
-        }
-
-        .loading-overlay.hidden {
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid var(--bg-tertiary);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* ============================================
-           SCROLL BEHAVIOR
-           ============================================ */
-
-        .scroll-content {
-            padding: 0 0 20px;
-        }
-
-        /* ============================================
-           UTILITIES
-           ============================================ */
-
-        .hidden {
-            display: none !important;
-        }
-
-        .text-center {
-            text-align: center;
-        }
-
-        .mt-12 {
-            margin-top: 12px;
-        }
-
-        .mb-12 {
-            margin-bottom: 12px;
-        }
-
-        .px-16 {
-            padding-left: 16px;
-            padding-right: 16px;
-        }
-
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>PrintFarm Mini App v2.6.7</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root{
+      --pf-bg:#f1f2f6;
+      --pf-card:#ffffff;
+      --pf-divider:rgba(0,0,0,.08);
+      --pf-text:#111827;
+      --pf-sub:#6b7280;
+      --pf-accent:#2f6bff;
+      --pf-good:#00c853;
+      --pf-warn:#ffb300;
+      --pf-bad:#ff3b30;
+      --pf-purple:#7c3aed;
+      --pf-cyan:#06b6d4;
+      --pf-shadow:0 8px 24px rgba(0,0,0,.06);
+      --pf-radius:12px;
+      --pf-safe-bottom: env(safe-area-inset-bottom, 0px);
+      --pf-safe-top: env(safe-area-inset-top, 0px);
+    }
+
+    html, body { height: 100%; }
+    body{
+      background: var(--pf-bg);
+      color: var(--pf-text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overscroll-behavior: none;
+    }
+
+    /* iOS/Telegram-like blocks */
+    .pf-card{
+      background: var(--pf-card);
+      border-radius: var(--pf-radius);
+      box-shadow: var(--pf-shadow);
+    }
+    .pf-divider{ border-top: 1px solid var(--pf-divider); }
+
+    /* Bottom bar */
+    .pf-bottom-bar{
+      position: fixed;
+      left: 0; right: 0;
+      bottom: 0;
+      padding-bottom: calc(10px + var(--pf-safe-bottom));
+      padding-top: 10px;
+      background: rgba(255,255,255,.75);
+      border-top: 1px solid rgba(0,0,0,.06);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      z-index: 50;
+    }
+    .pf-icon{
+      width: 24px;
+      height: 24px;
+      display: inline-block;
+    }
+
+    .pf-tab-btn[aria-selected="true"] .pf-tab-label{ color: var(--pf-accent); }
+    .pf-tab-btn[aria-selected="true"] svg{ color: var(--pf-accent); }
+    .pf-tab-btn[aria-selected="false"] svg{ color: rgba(17,24,39,.55); }
+
+    /* Modals */
+    .pf-modal-backdrop{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.25);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 60;
+    }
+    .pf-modal-backdrop[data-open="true"]{ display: flex; }
+    .pf-modal{
+      width: 100%;
+      max-width: 720px;
+      border-top-left-radius: 18px;
+      border-top-right-radius: 18px;
+      background: var(--pf-card);
+      padding: 14px 14px calc(14px + var(--pf-safe-bottom));
+      box-shadow: 0 -14px 34px rgba(0,0,0,.18);
+    }
+
+    /* Skeleton */
+    .pf-skeleton{
+      background: linear-gradient(90deg, rgba(0,0,0,.06), rgba(0,0,0,.03), rgba(0,0,0,.06));
+      background-size: 200% 100%;
+      animation: pfShimmer 1.25s infinite;
+      border-radius: 10px;
+    }
+    @keyframes pfShimmer{ 0%{ background-position: 0% 0; } 100%{ background-position: 200% 0; } }
+
+    /* Status pills (neon-ish) */
+    .pf-pill{
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: .2px;
+    }
+    .pf-pill--good{ background: rgba(0,200,83,.12); color: #067a34; border: 1px solid rgba(0,200,83,.22); }
+    .pf-pill--warn{ background: rgba(255,179,0,.14); color: #8a5a00; border: 1px solid rgba(255,179,0,.22); }
+    .pf-pill--bad{ background: rgba(255,59,48,.12); color: #a61a12; border: 1px solid rgba(255,59,48,.22); }
+    .pf-pill--info{ background: rgba(47,107,255,.12); color: #1d46aa; border: 1px solid rgba(47,107,255,.22); }
+
+    /* Settings icons with colored rounded background (like iOS) */
+    .pf-setting-icon{
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+    }
+
+    /* Tap highlight */
+    .pf-tap{ -webkit-tap-highlight-color: transparent; }
+
+    /* Ensure content not hidden behind bottom bar */
+    .pf-main{ padding-bottom: 90px; }
+
+    /* Tiny toast */
+    .pf-toast-wrap{
+      position: fixed;
+      left: 0; right: 0;
+      top: calc(10px + var(--pf-safe-top));
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 70;
+    }
+    .pf-toast{
+      pointer-events: auto;
+      background: rgba(17,24,39,.92);
+      color: white;
+      padding: 10px 12px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      max-width: min(680px, calc(100% - 24px));
+      font-size: 13px;
+      line-height: 1.3;
+      display: none;
+    }
+    .pf-toast[data-open="true"]{ display: block; }
+
+    /* Small badge */
+    .pf-badge{
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(124,58,237,.12);
+      border: 1px solid rgba(124,58,237,.22);
+      color: #5b21b6;
+    }
+  </style>
 </head>
-<body>
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-spinner"></div>
-    </div>
+<body class="pf-tap">
+  <div class="pf-toast-wrap">
+    <div id="toast" class="pf-toast" role="status" aria-live="polite"></div>
+  </div>
 
-    <!-- Main App Container -->
-    <div class="app-container" id="appContainer">
-
-        <!-- ============================================
-             PRINTERS SCREEN
-             ============================================ -->
-        <div class="screen active" id="screenPrinters">
-            <div class="header header-large">
-                <div class="header-actions">
-                    <div class="header-title">Принтеры</div>
-                    <button class="filter-btn" onclick="openFilter()">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            <div class="scroll-content" id="printersList">
-                <!-- Printers will be loaded here -->
-            </div>
+  <div class="max-w-3xl mx-auto px-3">
+    <!-- Header -->
+    <header class="pt-4" style="padding-top: calc(16px + var(--pf-safe-top));">
+      <div class="flex items-center justify-between">
+        <div class="min-w-0">
+          <div class="text-[15px] font-semibold tracking-tight">PrintFarm</div>
+          <div id="subtitle" class="text-xs text-gray-500 truncate">Экосистема управления 3D‑фермой</div>
         </div>
-
-        <!-- ============================================
-             MODELS SCREEN
-             ============================================ -->
-        <div class="screen" id="screenModels">
-            <div class="header header-large">
-                <div class="header-title">Модели</div>
-            </div>
-            <div class="scroll-content">
-                <div class="models-grid" id="modelsList">
-                    <!-- Models will be loaded here -->
-                </div>
-            </div>
-        </div>
-
-        <!-- ============================================
-             ORDERS SCREEN
-             ============================================ -->
-        <div class="screen" id="screenOrders">
-            <div class="header header-large">
-                <div class="header-title">Заказы</div>
-            </div>
-            <div class="scroll-content" id="ordersList">
-                <!-- Orders will be loaded here -->
-            </div>
-        </div>
-
-        <!-- ============================================
-             PROFILE SCREEN
-             ============================================ -->
-        <div class="screen" id="screenProfile">
-            <div class="header header-large">
-                <div class="header-title">Профиль</div>
-            </div>
-            <div class="scroll-content">
-                <div class="profile-header">
-                    <div class="profile-avatar" id="profileAvatar">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                        </svg>
-                    </div>
-                    <div class="profile-name" id="profileName">Пользователь</div>
-                    <div class="profile-id" id="profileId">ID: 000000000</div>
-                </div>
-
-                <div class="subscription-card">
-                    <div class="subscription-header">
-                        <div class="subscription-plan">Текущий план</div>
-                        <div class="subscription-badge" id="planBadge">FREE</div>
-                    </div>
-                    <div class="subscription-limits">
-                        <div class="limit-item">
-                            <div class="limit-header">
-                                <span class="limit-name">Принтеры</span>
-                                <span class="limit-value" id="limitPrinters">2 / 3</span>
-                            </div>
-                            <div class="limit-bar">
-                                <div class="limit-fill" id="limitPrintersFill" style="width: 66%"></div>
-                            </div>
-                        </div>
-                        <div class="limit-item">
-                            <div class="limit-header">
-                                <span class="limit-name">Модели</span>
-                                <span class="limit-value" id="limitModels">8 / 10</span>
-                            </div>
-                            <div class="limit-bar">
-                                <div class="limit-fill warning" id="limitModelsFill" style="width: 80%"></div>
-                            </div>
-                        </div>
-                        <div class="limit-item">
-                            <div class="limit-header">
-                                <span class="limit-name">Печатей в месяц</span>
-                                <span class="limit-value" id="limitPrints">45 / 50</span>
-                            </div>
-                            <div class="limit-bar">
-                                <div class="limit-fill danger" id="limitPrintsFill" style="width: 90%"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <button class="subscription-btn" onclick="manageSubscription()">
-                        Управлять подпиской
-                    </button>
-                </div>
-
-                <div class="section">
-                    <div class="card">
-                        <div class="card-item" onclick="openSettings()">
-                            <div class="icon icon-settings">
-                                <svg viewBox="0 0 24 24">
-                                    <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-                                </svg>
-                            </div>
-                            <span style="flex:1">Настройки</span>
-                            <svg width="8" height="14" fill="none" stroke="var(--text-tertiary)" stroke-width="2">
-                                <path d="M1 1l6 6-6 6"/>
-                            </svg>
-                        </div>
-                        <div class="card-item" onclick="openHelp()">
-                            <div class="icon" style="background: linear-gradient(135deg, #5ac8fa, #007aff);">
-                                <svg viewBox="0 0 24 24">
-                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
-                                </svg>
-                            </div>
-                            <span style="flex:1">Помощь</span>
-                            <svg width="8" height="14" fill="none" stroke="var(--text-tertiary)" stroke-width="2">
-                                <path d="M1 1l6 6-6 6"/>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="profile-footer">
-                    <p>Версия 2.6.7</p>
-                    <p>Разработчик: <a href="https://t.me/denchy" target="_blank">@denchy</a></p>
-                    <p style="margin-top: 16px;">
-                        <a href="https://t.me/denchy" target="_blank">Поддержать проект (Донат)</a>
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <!-- ============================================
-             ERROR SCREEN
-             ============================================ -->
-        <div class="screen" id="screenError">
-            <div class="error-state">
-                <svg viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-                </svg>
-                <h3>Ошибка соединения</h3>
-                <p>Не удалось подключиться к серверу. Проверьте интернет-соединение.</p>
-                <button class="retry-btn" onclick="retryConnection()">Повторить</button>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- Tab Bar -->
-    <nav class="tab-bar" id="tabBar">
-        <div class="tab-item active" data-tab="printers" onclick="switchTab('printers')">
-            <svg viewBox="0 0 24 24">
-                <path d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 14H8v-4h8v4zm2-4v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z"/>
-                <circle cx="18" cy="11.5" r="1"/>
+        <div class="flex items-center gap-2">
+          <button id="filterBtn" class="pf-card px-3 py-2 flex items-center gap-2" title="Сортировка и фильтры">
+            <span class="text-sm font-semibold">Фильтр</span>
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
-            <span>Принтеры</span>
-        </div>
-        <div class="tab-item" data-tab="models" onclick="switchTab('models')">
-            <svg viewBox="0 0 24 24">
-                <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
+          </button>
+          <button id="refreshBtn" class="pf-card px-3 py-2 flex items-center gap-2" title="Обновить">
+            <span class="text-sm font-semibold">Обновить</span>
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M20 4v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span>Модели</span>
+          </button>
         </div>
-        <div class="tab-item" data-tab="orders" onclick="switchTab('orders')">
-            <svg viewBox="0 0 24 24">
-                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+      </div>
+
+      <div class="mt-3 pf-card px-3 py-2 flex items-center gap-2">
+        <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Z" stroke="currentColor" stroke-width="2"/>
+          <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <input id="searchInput" class="w-full bg-transparent outline-none text-sm" placeholder="Поиск: принтер, заказ, модель…" autocomplete="off" />
+        <button id="clearSearch" class="text-sm text-gray-500 px-2 py-1 rounded-lg hover:bg-black/5" title="Очистить">Сброс</button>
+      </div>
+
+      <div id="banner" class="mt-3 hidden">
+        <div class="pf-card px-3 py-2 flex items-start gap-2">
+          <div class="mt-[2px]">
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 9v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M12 17h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+              <path d="M10.29 3.86 2.82 17.18A2 2 0 0 0 4.55 20h14.9a2 2 0 0 0 1.73-2.82L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             </svg>
-            <span>Заказы</span>
+          </div>
+          <div class="min-w-0">
+            <div class="text-sm font-semibold">API недоступно</div>
+            <div class="text-xs text-gray-500">Показаны демо‑данные. Для реальных данных требуется backend и эндпоинт <code class="px-1 py-[1px] rounded bg-black/5">POST /api/bootstrap</code>.</div>
+          </div>
         </div>
-        <div class="tab-item" data-tab="profile" onclick="switchTab('profile')">
-            <div class="tab-avatar" id="tabAvatar">
-                <img src="" alt="" style="display: none;">
-            </div>
-            <span>Профиль</span>
-        </div>
-    </nav>
+      </div>
+    </header>
 
-    <!-- Filter Popover -->
-    <div class="popover-overlay" id="filterOverlay" onclick="closeFilter()">
-        <div class="popover" onclick="event.stopPropagation()">
-            <div class="popover-item" data-filter="free" onclick="applyFilter('free')">
-                Сначала свободные
-            </div>
-            <div class="popover-item" data-filter="busy" onclick="applyFilter('busy')">
-                Сначала занятые
-            </div>
-            <div class="popover-item" data-filter="time" onclick="applyFilter('time')">
-                По времени
-            </div>
-            <div class="popover-item selected" data-filter="name" onclick="applyFilter('name')">
-                По имени
-            </div>
+    <!-- Main -->
+    <main class="pf-main mt-4" id="main">
+      <!-- Tabs -->
+      <section id="tab-printers" class="tab-pane"></section>
+      <section id="tab-work" class="tab-pane hidden"></section>
+      <section id="tab-profile" class="tab-pane hidden"></section>
+
+      <!-- Initial loading skeleton -->
+      <section id="loading" class="space-y-3">
+        <div class="pf-card p-4">
+          <div class="h-4 w-48 pf-skeleton"></div>
+          <div class="mt-3 h-3 w-64 pf-skeleton"></div>
+          <div class="mt-2 h-3 w-52 pf-skeleton"></div>
         </div>
+        <div class="pf-card p-4">
+          <div class="h-4 w-40 pf-skeleton"></div>
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <div class="h-16 pf-skeleton"></div>
+            <div class="h-16 pf-skeleton"></div>
+          </div>
+        </div>
+        <div class="pf-card p-4">
+          <div class="h-4 w-56 pf-skeleton"></div>
+          <div class="mt-3 h-20 pf-skeleton"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Bottom bar -->
+  <nav class="pf-bottom-bar">
+    <div class="max-w-3xl mx-auto px-6">
+      <div class="grid grid-cols-3 gap-2">
+        <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="printers" aria-selected="true">
+          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M7 7V4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" stroke="currentColor" stroke-width="2"/>
+            <path d="M7 17h10v5H7v-5Z" stroke="currentColor" stroke-width="2"/>
+            <path d="M6 7h12a4 4 0 0 1 4 4v4a2 2 0 0 1-2 2h-3v-4H7v4H4a2 2 0 0 1-2-2v-4a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Принтеры</div>
+        </button>
+        <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="work" aria-selected="false">
+          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M9 7h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M9 11h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Заказы</div>
+        </button>
+        <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="profile" aria-selected="false">
+          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M20 21a8 8 0 1 0-16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Профиль</div>
+        </button>
+      </div>
     </div>
+  </nav>
 
-    <!-- Action Sheet -->
-    <div class="action-sheet-overlay" id="actionSheetOverlay" onclick="closeActionSheet()">
-        <div class="action-sheet" onclick="event.stopPropagation()">
-            <div class="action-sheet-content">
-                <div class="action-sheet-header">
-                    <h3 id="actionSheetTitle">Принтер</h3>
-                    <p id="actionSheetSubtitle">Выберите действие</p>
-                </div>
-                <div id="actionSheetActions">
-                    <!-- Actions will be inserted here -->
-                </div>
-            </div>
-            <div class="action-sheet-cancel" onclick="closeActionSheet()">Отмена</div>
+  <!-- Filter modal -->
+  <div id="filterModal" class="pf-modal-backdrop" role="dialog" aria-modal="true" aria-label="Сортировка и фильтры">
+    <div class="pf-modal">
+      <div class="flex items-center justify-between">
+        <div class="text-base font-semibold">Сортировка и фильтры</div>
+        <button id="closeFilter" class="px-3 py-2 rounded-xl hover:bg-black/5">Закрыть</button>
+      </div>
+
+      <div class="mt-3 pf-divider"></div>
+
+      <div class="mt-3 grid gap-3">
+        <div>
+          <div class="text-sm font-semibold">Принтеры</div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <button class="pf-card px-3 py-2 text-left" data-filter="printer_size" data-value="all">
+              <div class="text-sm font-semibold">Все</div>
+              <div class="text-xs text-gray-500">Без ограничения по столу</div>
+            </button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="printer_size" data-value="small">
+              <div class="text-sm font-semibold">Маленькие</div>
+              <div class="text-xs text-gray-500">Меньшая площадь стола</div>
+            </button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="printer_size" data-value="big">
+              <div class="text-sm font-semibold">Большие</div>
+              <div class="text-xs text-gray-500">Большая площадь стола</div>
+            </button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="printer_size" data-value="xl">
+              <div class="text-sm font-semibold">XL</div>
+              <div class="text-xs text-gray-500">Максимальная площадь стола</div>
+            </button>
+          </div>
         </div>
+
+        <div>
+          <div class="text-sm font-semibold">Модели</div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <button class="pf-card px-3 py-2 text-left" data-filter="model_sort" data-value="volume_desc">
+              <div class="text-sm font-semibold">По объёму</div>
+              <div class="text-xs text-gray-500">Сначала самые объёмные</div>
+            </button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="model_sort" data-value="volume_asc">
+              <div class="text-sm font-semibold">По объёму (↑)</div>
+              <div class="text-xs text-gray-500">Сначала компактные</div>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="text-sm font-semibold">Приоритет</div>
+          <div class="mt-2 pf-card px-3 py-3">
+            <label class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold">Заказы приоритетнее моделей</div>
+                <div class="text-xs text-gray-500">Отображать заказы первыми (логика v2.6.7)</div>
+              </div>
+              <input id="ordersFirst" type="checkbox" class="h-5 w-5" checked />
+            </label>
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="applyFilters" class="flex-1 pf-card px-3 py-3 font-semibold" style="border: 1px solid rgba(47,107,255,.22); background: rgba(47,107,255,.08); color: #1d46aa;">Применить</button>
+          <button id="resetFilters" class="pf-card px-3 py-3 font-semibold">Сбросить</button>
+        </div>
+      </div>
     </div>
+  </div>
 
-    <script>
-        /* ============================================
-           PrintFarm Mini App - JavaScript
-           Version: 2.6.7
-           Developer: @denchy
-           ============================================ */
+  <script>
+    'use strict';
 
-        // ============================================
-        // CONFIGURATION
-        // ============================================
+    /**
+     * PrintFarm Mini App (демо-фронтенд)
+     * 
+     * Важное:
+     * 1) USE_MOCK = false — данные запрашиваются с backend через POST /api/bootstrap
+     * 2) При недоступности API включается безопасный fallback на демо-датасет, чтобы UI оставался работоспособным.
+     * 
+     * В реальном проекте сюда подключаются:
+     * - FastAPI backend, который возвращает актуальные данные по принтерам/заказам/моделям/подписке
+     * - Авторизация через Telegram initData
+     */
 
-        const API_BASE = 'https://relative-joyce-3dprintable-b0155a87.koyeb.app/';
-        const APP_VERSION = '2.6.7';
+    const APP_VERSION = '2.6.7';
+    const DEV_HANDLE = '@ТвойНик';
+    const DONATE_URL = 'https://example.com/donate';
 
-        // ============================================
-        // TELEGRAM WEB APP
-        // ============================================
+    // Требование: USE_MOCK = false.
+    const USE_MOCK = false;
+    const API_BASE = '';
 
+    const state = {
+      bootstrapped: false,
+      isDemo: false,
+      isAdmin: false,
+      user: {
+        id: null,
+        first_name: 'Пользователь',
+        last_name: '',
+        username: '',
+        photo_url: ''
+      },
+      subscription: { plan: 'FREE', limit_printers: 1, expires_at: null },
+      printers: [],
+      models: [],
+      orders: [],
+      ui: {
+        activeTab: 'printers',
+        search: '',
+        filters: {
+          printer_size: 'all',
+          model_sort: 'volume_desc',
+          ordersFirst: true,
+        }
+      }
+    };
+
+    const $ = (sel, root=document) => root.querySelector(sel);
+    const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+    function safeText(v){
+      if (v === null || v === undefined) return '';
+      return String(v);
+    }
+
+    function toast(message, opts={}){
+      const el = $('#toast');
+      if (!el) return;
+      const ms = typeof opts.ms === 'number' ? opts.ms : 2600;
+      el.textContent = safeText(message);
+      el.dataset.open = 'true';
+      window.clearTimeout(toast._t);
+      toast._t = window.setTimeout(() => { el.dataset.open = 'false'; }, ms);
+    }
+
+    function fmtMm(v){
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      return `${Math.round(n*10)/10} мм`;
+    }
+
+    function fmtCm3(v){
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      return `${Math.round(n*10)/10} см³`;
+    }
+
+    function fmtHours(seconds){
+      const s = Number(seconds);
+      if (!Number.isFinite(s) || s < 0) return '—';
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      return `${h} ч ${String(m).padStart(2,'0')} мин`;
+    }
+
+    function fmtDateTime(iso){
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleString('ru-RU', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function getTelegramUser(){
+      try{
         const tg = window.Telegram?.WebApp;
-        let userData = null;
-        let appData = {
-            printers: [],
-            models: [],
-            orders: [],
-            user: null,
-            subscription: null
+        const user = tg?.initDataUnsafe?.user;
+        if (!user) return null;
+        return {
+          id: user.id ?? null,
+          first_name: user.first_name ?? 'Пользователь',
+          last_name: user.last_name ?? '',
+          username: user.username ?? '',
+          photo_url: user.photo_url ?? ''
         };
-        let currentFilter = 'name';
-        let selectedPrinter = null;
+      } catch {
+        return null;
+      }
+    }
 
-        // ============================================
-        // INITIALIZATION
-        // ============================================
+    function applyTelegramChrome(){
+      const tg = window.Telegram?.WebApp;
+      try{
+        tg?.ready?.();
+        tg?.expand?.();
+        // Нативное ощущение: отключаем свайп-бэк внутри WebView
+        tg?.disableVerticalSwipes?.();
+      } catch {
+        // игнорируем: в браузере API нет
+      }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            initApp();
+      try{
+        const theme = tg?.themeParams;
+        // Если тема тёмная — слегка адаптируем, но сохраняем Telegram Native 2024 стилистику.
+        if (tg?.colorScheme === 'dark'){
+          document.documentElement.style.setProperty('--pf-bg', '#0f1115');
+          document.documentElement.style.setProperty('--pf-card', '#161a22');
+          document.documentElement.style.setProperty('--pf-divider', 'rgba(255,255,255,.08)');
+          document.documentElement.style.setProperty('--pf-text', '#e5e7eb');
+          document.documentElement.style.setProperty('--pf-sub', '#9ca3af');
+          document.querySelector('.pf-bottom-bar')?.style?.setProperty('background', 'rgba(22,26,34,.72)');
+        }
+
+        // Акцент можно подхватить из темы Telegram (если задан), но не навязчиво.
+        const link = theme?.link_color;
+        if (link && typeof link === 'string'){
+          document.documentElement.style.setProperty('--pf-accent', link);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    function demoData(){
+      return {
+        version: APP_VERSION,
+        server_time: new Date().toISOString(),
+        is_admin: true,
+        subscription: { plan: 'PRO', limit_printers: 5, expires_at: null },
+        printers: [
+          {
+            id: 'p1',
+            name: 'Bambu Lab X1C',
+            model: 'Bambu X1 Carbon',
+            bed_x: 256, bed_y: 256, bed_z: 256,
+            nozzle: 0.4,
+            status: 'printing',
+            status_label: 'Печатает',
+            current_job: { title: 'Заказ #1042 — Крепёж', eta_sec: 2*3600 + 15*60, progress: 0.62 },
+            updated_at: new Date(Date.now()-2*60*1000).toISOString(),
+          },
+          {
+            id: 'p2',
+            name: 'Prusa MK4',
+            model: 'Original Prusa MK4',
+            bed_x: 250, bed_y: 210, bed_z: 220,
+            nozzle: 0.4,
+            status: 'idle',
+            status_label: 'Свободен',
+            current_job: null,
+            updated_at: new Date(Date.now()-25*60*1000).toISOString(),
+          },
+          {
+            id: 'p3',
+            name: 'Voron 2.4 (350)',
+            model: 'Voron 2.4',
+            bed_x: 350, bed_y: 350, bed_z: 350,
+            nozzle: 0.6,
+            status: 'error',
+            status_label: 'Ошибка',
+            current_job: { title: 'Модель: Корпус', eta_sec: null, progress: 0.18 },
+            updated_at: new Date(Date.now()-5*60*1000).toISOString(),
+          }
+        ],
+        orders: [
+          {
+            id: 'o1042',
+            title: 'Заказ #1042',
+            customer: 'ООО «ТехПром»',
+            priority: 10,
+            remaining_qty: 7,
+            model_ref: 'm2',
+            notes: 'Срочно. Пластик PETG. Цвет — чёрный.',
+            created_at: new Date(Date.now()-2*24*3600*1000).toISOString(),
+          },
+          {
+            id: 'o1041',
+            title: 'Заказ #1041',
+            customer: 'Частный клиент',
+            priority: 5,
+            remaining_qty: 1,
+            model_ref: 'm1',
+            notes: 'Серый. Без постобработки.',
+            created_at: new Date(Date.now()-4*24*3600*1000).toISOString(),
+          }
+        ],
+        models: [
+          {
+            id: 'm1',
+            title: 'Кронштейн усиленный',
+            kind: 'stl',
+            volume_cm3: 24.1,
+            bbox_mm: { x: 118.2, y: 36.4, z: 42.0 },
+            est_time_sec: 1*3600 + 10*60,
+            est_weight_g: 31,
+            created_at: new Date(Date.now()-10*24*3600*1000).toISOString(),
+          },
+          {
+            id: 'm2',
+            title: 'Крепёжная клипса (партия)',
+            kind: 'gcode',
+            volume_cm3: 3.8,
+            bbox_mm: { x: 28.0, y: 18.0, z: 8.0 },
+            est_time_sec: 22*60,
+            est_weight_g: 6,
+            created_at: new Date(Date.now()-3*24*3600*1000).toISOString(),
+          },
+          {
+            id: 'm3',
+            title: 'Корпус электроники',
+            kind: 'stl',
+            volume_cm3: 312.6,
+            bbox_mm: { x: 240.0, y: 190.0, z: 120.0 },
+            est_time_sec: 13*3600 + 40*60,
+            est_weight_g: 420,
+            created_at: new Date(Date.now()-1*24*3600*1000).toISOString(),
+          }
+        ]
+      };
+    }
+
+    async function postJSON(url, body, timeoutMs=12000){
+      const ctrl = new AbortController();
+      const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
+      try{
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body ?? {}),
+          signal: ctrl.signal,
         });
+        const ct = r.headers.get('content-type') || '';
+        const isJson = ct.includes('application/json');
+        const data = isJson ? await r.json() : await r.text();
+        return { ok: r.ok, status: r.status, data };
+      } finally {
+        window.clearTimeout(t);
+      }
+    }
 
-        async function initApp() {
-            // Initialize Telegram Web App
-            if (tg) {
-                tg.ready();
-                tg.expand();
-                applyTheme();
-                tg.onEvent('themeChanged', applyTheme);
-            }
+    function normalizeBootstrap(payload){
+      const out = {
+        version: safeText(payload?.version || APP_VERSION),
+        server_time: payload?.server_time || new Date().toISOString(),
+        is_admin: Boolean(payload?.is_admin),
+        subscription: payload?.subscription || { plan: 'FREE', limit_printers: 1, expires_at: null },
+        printers: Array.isArray(payload?.printers) ? payload.printers : [],
+        models: Array.isArray(payload?.models) ? payload.models : [],
+        orders: Array.isArray(payload?.orders) ? payload.orders : [],
+      };
+      // Мягкие нормализации, чтобы UI не падал от грязных данных.
+      out.printers = out.printers.map(p => ({
+        id: safeText(p?.id || crypto.randomUUID()),
+        name: safeText(p?.name || 'Принтер'),
+        model: safeText(p?.model || 'Неизвестная модель'),
+        bed_x: Number(p?.bed_x ?? 0),
+        bed_y: Number(p?.bed_y ?? 0),
+        bed_z: Number(p?.bed_z ?? 0),
+        nozzle: Number(p?.nozzle ?? 0.4),
+        status: safeText(p?.status || 'idle'),
+        status_label: safeText(p?.status_label || 'Статус'),
+        current_job: p?.current_job ? {
+          title: safeText(p.current_job.title || 'Задание'),
+          eta_sec: p.current_job.eta_sec === null || p.current_job.eta_sec === undefined ? null : Number(p.current_job.eta_sec),
+          progress: Number(p.current_job.progress ?? 0),
+        } : null,
+        updated_at: p?.updated_at || null,
+      }));
 
-            // Load user data
-            extractUserData();
-            
-            // Load data from API
-            await loadBootstrapData();
+      out.models = out.models.map(m => ({
+        id: safeText(m?.id || crypto.randomUUID()),
+        title: safeText(m?.title || 'Модель'),
+        kind: safeText(m?.kind || 'stl'),
+        volume_cm3: Number(m?.volume_cm3 ?? NaN),
+        bbox_mm: {
+          x: Number(m?.bbox_mm?.x ?? NaN),
+          y: Number(m?.bbox_mm?.y ?? NaN),
+          z: Number(m?.bbox_mm?.z ?? NaN),
+        },
+        est_time_sec: Number(m?.est_time_sec ?? NaN),
+        est_weight_g: Number(m?.est_weight_g ?? NaN),
+        created_at: m?.created_at || null,
+      }));
 
-            // Hide loading
-            setTimeout(() => {
-                document.getElementById('loadingOverlay').classList.add('hidden');
-            }, 500);
+      out.orders = out.orders.map(o => ({
+        id: safeText(o?.id || crypto.randomUUID()),
+        title: safeText(o?.title || 'Заказ'),
+        customer: safeText(o?.customer || ''),
+        priority: Number(o?.priority ?? 0),
+        remaining_qty: Number(o?.remaining_qty ?? 0),
+        model_ref: safeText(o?.model_ref || ''),
+        notes: safeText(o?.notes || ''),
+        created_at: o?.created_at || null,
+      }));
+
+      return out;
+    }
+
+    async function bootstrap(){
+      // Пользователь Telegram (если доступно)
+      const tgUser = getTelegramUser();
+      if (tgUser){
+        state.user = { ...state.user, ...tgUser };
+      }
+
+      const request = {
+        // В реальном backend: initData используется для проверки подписи.
+        initData: safeText(window.Telegram?.WebApp?.initData || ''),
+        client: {
+          version: APP_VERSION,
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+          locale: navigator.language || 'ru-RU',
+          userAgent: navigator.userAgent,
         }
+      };
 
-        function applyTheme() {
-            if (tg?.colorScheme === 'dark') {
-                document.body.classList.add('theme-dark');
-            } else {
-                document.body.classList.remove('theme-dark');
-            }
-
-            // Apply Telegram theme colors
-            const root = document.documentElement;
-            if (tg?.themeParams) {
-                const tp = tg.themeParams;
-                if (tp.bg_color) root.style.setProperty('--bg-primary', tp.bg_color);
-                if (tp.secondary_bg_color) root.style.setProperty('--bg-secondary', tp.secondary_bg_color);
-                if (tp.text_color) root.style.setProperty('--text-primary', tp.text_color);
-                if (tp.hint_color) root.style.setProperty('--text-secondary', tp.hint_color);
-                if (tp.link_color) root.style.setProperty('--accent', tp.link_color);
-            }
+      if (!USE_MOCK){
+        try{
+          const res = await postJSON(`${API_BASE}/api/bootstrap`, request);
+          if (res.ok && res.data && typeof res.data === 'object'){
+            const norm = normalizeBootstrap(res.data);
+            state.isDemo = false;
+            state.isAdmin = Boolean(norm.is_admin);
+            state.subscription = norm.subscription;
+            state.printers = norm.printers;
+            state.models = norm.models;
+            state.orders = norm.orders;
+            state.bootstrapped = true;
+            $('#banner')?.classList.add('hidden');
+            return;
+          }
+          // Если backend ответил ошибкой/не JSON — включаем безопасный fallback.
+          console.warn('Bootstrap failed:', res.status, res.data);
+        } catch (e){
+          console.warn('Bootstrap exception:', e);
         }
+      }
 
-        function extractUserData() {
-            if (tg?.initDataUnsafe?.user) {
-                userData = tg.initDataUnsafe.user;
-                updateUserUI();
-            } else {
-                // Demo mode
-                userData = {
-                    id: 123456789,
-                    first_name: 'Демо',
-                    last_name: 'Пользователь',
-                    username: 'demo_user',
-                    photo_url: null
-                };
-                updateUserUI();
-            }
-        }
+      const demo = normalizeBootstrap(demoData());
+      state.isDemo = true;
+      state.isAdmin = Boolean(demo.is_admin);
+      state.subscription = demo.subscription;
+      state.printers = demo.printers;
+      state.models = demo.models;
+      state.orders = demo.orders;
+      state.bootstrapped = true;
+      $('#banner')?.classList.remove('hidden');
+    }
 
-        function updateUserUI() {
-            // Profile
-            const fullName = [userData.first_name, userData.last_name].filter(Boolean).join(' ');
-            document.getElementById('profileName').textContent = fullName || 'Пользователь';
-            document.getElementById('profileId').textContent = `ID: ${userData.id}`;
+    function bedArea(p){
+      const x = Number(p?.bed_x);
+      const y = Number(p?.bed_y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return NaN;
+      return x * y;
+    }
 
-            // Avatars
-            if (userData.photo_url) {
-                document.getElementById('profileAvatar').innerHTML = 
-                    `<img src="${userData.photo_url}" alt="">`;
-                const tabAvatarImg = document.querySelector('#tabAvatar img');
-                tabAvatarImg.src = userData.photo_url;
-                tabAvatarImg.style.display = 'block';
-            }
-        }
+    function matchesSearch(text, q){
+      if (!q) return true;
+      const t = safeText(text).toLowerCase();
+      const qq = safeText(q).trim().toLowerCase();
+      if (!qq) return true;
+      return t.includes(qq);
+    }
 
-        // ============================================
-        // API FUNCTIONS
-        // ============================================
+    function filterPrinters(list){
+      const q = state.ui.search;
+      const size = state.ui.filters.printer_size;
 
-        async function loadBootstrapData() {
-            try {
-                const response = await fetch(`${API_BASE}/bootstrap`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        initData: tg?.initData || '',
-                        user_id: userData?.id
-                    })
-                });
+      let out = list.filter(p => {
+        const blob = `${p.name} ${p.model} ${p.status_label}`;
+        return matchesSearch(blob, q);
+      });
 
-                if (!response.ok) throw new Error('API Error');
+      // Размер по площади стола.
+      if (size !== 'all'){
+        out = out.filter(p => {
+          const a = bedArea(p);
+          if (!Number.isFinite(a)) return false;
+          // Эвристика: small <= 52k, big 52k-100k, xl > 100k
+          if (size === 'small') return a <= 52000;
+          if (size === 'big') return a > 52000 && a <= 100000;
+          if (size === 'xl') return a > 100000;
+          return true;
+        });
+      }
 
-                const data = await response.json();
-                appData = { ...appData, ...data };
-                
-                renderPrinters();
-                renderModels();
-                renderOrders();
-                updateSubscriptionUI();
+      // Стабильная сортировка: печатающие выше, затем свободные, затем ошибки.
+      const rank = (s) => {
+        if (s === 'printing') return 0;
+        if (s === 'idle') return 1;
+        if (s === 'paused') return 2;
+        if (s === 'error') return 3;
+        return 9;
+      };
+      out = out.slice().sort((a,b) => {
+        const ra = rank(a.status);
+        const rb = rank(b.status);
+        if (ra !== rb) return ra - rb;
+        return safeText(a.name).localeCompare(safeText(b.name), 'ru');
+      });
 
-            } catch (error) {
-                console.error('Bootstrap error:', error);
-                // Use demo data
-                loadDemoData();
-            }
-        }
+      return out;
+    }
 
-        function loadDemoData() {
-            appData = {
-                printers: [
-                    { id: 1, name: 'Ender 3 Pro', brand: 'Creality', status: 'FREE', bed_x: 220, bed_y: 220, bed_z: 250, current_task: null, progress: 0 },
-                    { id: 2, name: 'Prusa MK3S+', brand: 'Prusa', status: 'BUSY', bed_x: 250, bed_y: 210, bed_z: 210, current_task: 'Benchy.stl', progress: 67, time_left: '1ч 23м' },
-                    { id: 3, name: 'Anycubic Vyper', brand: 'Anycubic', status: 'PAUSED', bed_x: 245, bed_y: 245, bed_z: 260, current_task: 'Phone_stand.stl', progress: 34, time_left: '2ч 45м' },
-                    { id: 4, name: 'Ender 5 Plus', brand: 'Creality', status: 'REPAIR', bed_x: 350, bed_y: 350, bed_z: 400, current_task: null, progress: 0 },
-                ],
-                models: [
-                    { id: 1, name: 'Benchy', file_id: 'benchy_001', dimensions: '60x31x48', volume: 15.2, print_time: '1ч 30м', preview: null },
-                    { id: 2, name: 'Phone Stand', file_id: 'stand_001', dimensions: '80x60x45', volume: 28.5, print_time: '2ч 15м', preview: null },
-                    { id: 3, name: 'Vase Mode', file_id: 'vase_001', dimensions: '100x100x150', volume: 45.0, print_time: '4ч 00м', preview: null },
-                    { id: 4, name: 'Cable Clip', file_id: 'clip_001', dimensions: '25x15x10', volume: 2.1, print_time: '15м', preview: null },
-                    { id: 5, name: 'Gear Set', file_id: 'gear_001', dimensions: '50x50x20', volume: 18.3, print_time: '1ч 45м', preview: null },
-                    { id: 6, name: 'Box Lid', file_id: 'box_001', dimensions: '120x80x15', volume: 32.0, print_time: '2ч 30м', preview: null },
-                ],
-                orders: [
-                    { id: 1001, date: '15.01.2025', items: [{ name: 'Benchy', qty: 2 }, { name: 'Cable Clip', qty: 5 }], status: 'done' },
-                    { id: 1002, date: '16.01.2025', items: [{ name: 'Phone Stand', qty: 1 }], status: 'printing' },
-                    { id: 1003, date: '17.01.2025', items: [{ name: 'Vase Mode', qty: 1 }, { name: 'Gear Set', qty: 3 }], status: 'pending' },
-                ],
-                subscription: {
-                    plan: 'FREE',
-                    printers: { current: 2, max: 3 },
-                    models: { current: 8, max: 10 },
-                    prints: { current: 45, max: 50 }
-                }
-            };
+    function sortModels(list){
+      const q = state.ui.search;
+      const sort = state.ui.filters.model_sort;
 
-            renderPrinters();
-            renderModels();
-            renderOrders();
-            updateSubscriptionUI();
-        }
+      let out = list.filter(m => {
+        const blob = `${m.title} ${m.kind}`;
+        return matchesSearch(blob, q);
+      });
 
-        async function performAction(printerId, action) {
-            try {
-                const response = await fetch(`${API_BASE}/action`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        initData: tg?.initData || '',
-                        printer_id: printerId,
-                        action: action
-                    })
-                });
+      out = out.slice().sort((a,b) => {
+        const av = Number(a.volume_cm3);
+        const bv = Number(b.volume_cm3);
+        const aOk = Number.isFinite(av);
+        const bOk = Number.isFinite(bv);
+        if (aOk !== bOk) return aOk ? -1 : 1; // известные объёмы выше
+        if (!aOk && !bOk) return safeText(a.title).localeCompare(safeText(b.title), 'ru');
+        if (sort === 'volume_asc') return av - bv;
+        return bv - av;
+      });
 
-                if (!response.ok) throw new Error('Action failed');
+      return out;
+    }
 
-                const data = await response.json();
-                
-                // Update local data
-                const printer = appData.printers.find(p => p.id === printerId);
-                if (printer && data.new_status) {
-                    printer.status = data.new_status;
-                    renderPrinters();
-                }
+    function filterOrders(list){
+      const q = state.ui.search;
+      let out = list.filter(o => {
+        const blob = `${o.title} ${o.customer} ${o.notes}`;
+        return matchesSearch(blob, q);
+      });
+      // Приоритет выше — раньше. Если одинаково, свежие выше.
+      out = out.slice().sort((a,b) => {
+        const ap = Number(a.priority);
+        const bp = Number(b.priority);
+        if (ap !== bp) return bp - ap;
+        const at = new Date(a.created_at || 0).getTime();
+        const bt = new Date(b.created_at || 0).getTime();
+        return bt - at;
+      });
+      return out;
+    }
 
-                // Haptic feedback
-                if (tg?.HapticFeedback) {
-                    tg.HapticFeedback.notificationOccurred('success');
-                }
+    function statusPill(status){
+      const s = safeText(status);
+      if (s === 'printing') return 'pf-pill pf-pill--info';
+      if (s === 'idle') return 'pf-pill pf-pill--good';
+      if (s === 'paused') return 'pf-pill pf-pill--warn';
+      if (s === 'error') return 'pf-pill pf-pill--bad';
+      return 'pf-pill pf-pill--info';
+    }
 
-            } catch (error) {
-                console.error('Action error:', error);
-                // Demo mode - just update locally
-                const printer = appData.printers.find(p => p.id === printerId);
-                if (printer) {
-                    switch (action) {
-                        case 'start':
-                            printer.status = 'BUSY';
-                            printer.progress = 0;
-                            break;
-                        case 'pause':
-                            printer.status = 'PAUSED';
-                            break;
-                        case 'resume':
-                            printer.status = 'BUSY';
-                            break;
-                        case 'stop':
-                            printer.status = 'FREE';
-                            printer.progress = 0;
-                            printer.current_task = null;
-                            break;
-                        case 'repair':
-                            printer.status = 'REPAIR';
-                            break;
-                    }
-                    renderPrinters();
-                }
+    function escapeHtml(str){
+      return safeText(str)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'", '&#039;');
+    }
 
-                if (tg?.HapticFeedback) {
-                    tg.HapticFeedback.notificationOccurred('success');
-                }
-            }
+    function renderPrinters(){
+      const root = $('#tab-printers');
+      const printers = filterPrinters(state.printers);
 
-            closeActionSheet();
-        }
+      const sub = state.subscription || { plan: 'FREE' };
+      const limit = sub.limit_printers;
+      const limLabel = limit === Infinity ? '∞' : safeText(limit);
+      const plan = safeText(sub.plan || 'FREE');
 
-        function retryConnection() {
-            document.getElementById('screenError').classList.remove('active');
-            document.getElementById('loadingOverlay').classList.remove('hidden');
-            loadBootstrapData();
-        }
+      let header = `
+        <div class="pf-card p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-base font-semibold">Принтеры</div>
+              <div class="text-xs" style="color: var(--pf-sub);">План: <span class="font-semibold">${escapeHtml(plan)}</span> · Лимит: <span class="font-semibold">${escapeHtml(limLabel)}</span> · Сервер: <span class="font-semibold">${escapeHtml(fmtDateTime(state.server_time || null))}</span></div>
+            </div>
+            <div class="flex items-center gap-2">
+              ${state.isDemo ? `<span class="pf-badge">ДЕМО</span>` : ''}
+              <button class="px-3 py-2 rounded-xl" style="background: rgba(0,0,0,.04);" id="addPrinterBtn" title="Добавить принтер">+ Добавить</button>
+            </div>
+          </div>
+        </div>
+      `;
 
-        // ============================================
-        // RENDER FUNCTIONS
-        // ============================================
+      let body = '';
+      if (printers.length === 0){
+        body = `
+          <div class="pf-card p-4">
+            <div class="text-sm font-semibold">Ничего не найдено</div>
+            <div class="text-xs text-gray-500 mt-1">Проверьте фильтры и строку поиска.</div>
+          </div>
+        `;
+      } else {
+        body = printers.map(p => {
+          const area = bedArea(p);
+          const areaText = Number.isFinite(area) ? `${Math.round(area)} мм²` : '—';
+          const job = p.current_job;
+          const progress = job && Number.isFinite(job.progress) ? Math.max(0, Math.min(1, job.progress)) : null;
+          const progressPct = progress === null ? null : Math.round(progress*100);
 
-        function renderPrinters() {
-            const container = document.getElementById('printersList');
-            let printers = [...appData.printers];
-
-            // Apply filter
-            printers = sortPrinters(printers, currentFilter);
-
-            if (printers.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 14H8v-4h8v4zm2-4v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z"/>
-                        </svg>
-                        <h3>Нет принтеров</h3>
-                        <p>Добавьте первый принтер через бота</p>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = printers.map(printer => `
-                <div class="printer-card" onclick="openPrinterActions(${printer.id})">
-                    <div class="printer-header">
-                        <div class="printer-info">
-                            <h3>${escapeHtml(printer.name)}</h3>
-                            <p>${escapeHtml(printer.brand)} | ${printer.bed_x}x${printer.bed_y}x${printer.bed_z}мм</p>
-                        </div>
-                        <span class="status-badge status-${printer.status.toLowerCase()}">${getStatusText(printer.status)}</span>
-                    </div>
-                    ${printer.status === 'BUSY' || printer.status === 'PAUSED' ? `
-                        <div class="printer-stats">
-                            <div class="printer-stat">Модель: <span>${escapeHtml(printer.current_task || 'Неизвестно')}</span></div>
-                            <div class="printer-stat">Осталось: <span>${printer.time_left || '—'}</span></div>
-                        </div>
-                        <div class="progress-container">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: ${printer.progress}%"></div>
-                            </div>
-                            <div class="progress-info">
-                                <span>Прогресс</span>
-                                <span>${printer.progress}%</span>
-                            </div>
-                        </div>
-                    ` : ''}
+          return `
+            <article class="pf-card p-4" data-printer-id="${escapeHtml(p.id)}">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <div class="text-base font-semibold truncate">${escapeHtml(p.name)}</div>
+                    <span class="${statusPill(p.status)}">${escapeHtml(p.status_label)}</span>
+                  </div>
+                  <div class="text-xs mt-1" style="color: var(--pf-sub);">
+                    ${escapeHtml(p.model)} · Сопло: <span class="font-semibold">${escapeHtml(p.nozzle)}</span> · Стол: <span class="font-semibold">${escapeHtml(fmtMm(p.bed_x))}</span> × <span class="font-semibold">${escapeHtml(fmtMm(p.bed_y))}</span> · Z: <span class="font-semibold">${escapeHtml(fmtMm(p.bed_z))}</span>
+                  </div>
                 </div>
-            `).join('');
-        }
+                <button class="px-3 py-2 rounded-xl hover:bg-black/5" data-action="printer_menu">Меню</button>
+              </div>
 
-        function renderModels() {
-            const container = document.getElementById('modelsList');
-
-            if (appData.models.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state" style="grid-column: 1/-1;">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
-                        </svg>
-                        <h3>Нет моделей</h3>
-                        <p>Загрузите STL файлы через бота</p>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = appData.models.map(model => `
-                <div class="model-card" onclick="openModelDetails(${model.id})">
-                    <div class="model-preview">
-                        ${model.preview ? 
-                            `<img src="${model.preview}" alt="${escapeHtml(model.name)}">` :
-                            `<svg viewBox="0 0 24 24">
-                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                            </svg>`
-                        }
-                    </div>
-                    <div class="model-info">
-                        <h4>${escapeHtml(model.name)}</h4>
-                        <p>${model.print_time} | ${model.dimensions}мм</p>
-                    </div>
+              ${job ? `
+                <div class="mt-3 pf-divider"></div>
+                <div class="mt-3">
+                  <div class="text-sm font-semibold truncate">${escapeHtml(job.title)}</div>
+                  <div class="mt-1 text-xs" style="color: var(--pf-sub);">Осталось: <span class="font-semibold">${escapeHtml(job.eta_sec === null ? '—' : fmtHours(job.eta_sec))}</span> · Прогресс: <span class="font-semibold">${escapeHtml(progressPct === null ? '—' : progressPct + '%')}</span> · Обновлено: <span class="font-semibold">${escapeHtml(fmtDateTime(p.updated_at))}</span></div>
+                  <div class="mt-2 h-2 rounded-full" style="background: rgba(0,0,0,.06);">
+                    <div class="h-2 rounded-full" style="width: ${progressPct ?? 0}%; background: linear-gradient(90deg, rgba(47,107,255,.85), rgba(6,182,212,.85));"></div>
+                  </div>
                 </div>
-            `).join('');
-        }
-
-        function renderOrders() {
-            const container = document.getElementById('ordersList');
-
-            if (appData.orders.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-                        </svg>
-                        <h3>Нет заказов</h3>
-                        <p>Начните печатать модели</p>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = appData.orders.map(order => `
-                <div class="order-card">
-                    <div class="order-header">
-                        <span class="order-number">Заказ #${order.id}</span>
-                        <span class="order-date">${order.date}</span>
-                    </div>
-                    <div class="order-items">
-                        ${order.items.map(item => `
-                            <div class="order-item">
-                                <div class="order-item-preview">
-                                    <svg viewBox="0 0 24 24">
-                                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                                    </svg>
-                                </div>
-                                <div class="order-item-info">
-                                    <div class="order-item-name">${escapeHtml(item.name)}</div>
-                                    <div class="order-item-details">Количество: ${item.qty}</div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div class="order-status">
-                        <div class="order-status-dot ${order.status}"></div>
-                        <span>${getOrderStatusText(order.status)}</span>
-                    </div>
+              ` : `
+                <div class="mt-3 flex items-center justify-between">
+                  <div class="text-xs" style="color: var(--pf-sub);">Площадь стола: <span class="font-semibold">${escapeHtml(areaText)}</span> · Обновлено: <span class="font-semibold">${escapeHtml(fmtDateTime(p.updated_at))}</span></div>
+                  <button class="px-3 py-2 rounded-xl" style="background: rgba(47,107,255,.08); border: 1px solid rgba(47,107,255,.22); color: #1d46aa;" data-action="start_job">Печать</button>
                 </div>
-            `).join('');
+              `}
+            </article>
+          `;
+        }).join('');
+      }
+
+      root.innerHTML = `
+        <div class="space-y-3">
+          ${header}
+          ${body}
+        </div>
+      `;
+
+      // Actions
+      $('#addPrinterBtn')?.addEventListener('click', () => {
+        const plan = safeText(state.subscription?.plan || 'FREE');
+        toast(`Добавление принтера: в демо-режиме недоступно. План: ${plan}.`);
+      });
+
+      $$('[data-action="printer_menu"]', root).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const card = e.target.closest('[data-printer-id]');
+          const id = card?.getAttribute('data-printer-id');
+          const printer = state.printers.find(p => p.id === id);
+          if (!printer){ toast('Не удалось определить принтер.'); return; }
+          toast(`Меню принтера: ${printer.name}. (В реальном проекте: карточка/команды/премиум-рендер.)`);
+        });
+      });
+
+      $$('[data-action="start_job"]', root).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const card = e.target.closest('[data-printer-id]');
+          const id = card?.getAttribute('data-printer-id');
+          const printer = state.printers.find(p => p.id === id);
+          if (!printer){ toast('Не удалось определить принтер.'); return; }
+          toast(`Печать: в демо UI показан запуск задания для «${printer.name}».`);
+        });
+      });
+    }
+
+    function renderWork(){
+      const root = $('#tab-work');
+      const orders = filterOrders(state.orders);
+      const models = sortModels(state.models);
+      const ordersFirst = Boolean(state.ui.filters.ordersFirst);
+
+      const orderCards = orders.map(o => {
+        const model = state.models.find(m => m.id === o.model_ref);
+        const modelTitle = model ? model.title : (o.model_ref ? `Модель: ${o.model_ref}` : 'Модель не указана');
+        const rem = Number.isFinite(o.remaining_qty) ? o.remaining_qty : 0;
+        const urgent = o.priority >= 8;
+
+        return `
+          <article class="pf-card p-4" data-order-id="${escapeHtml(o.id)}">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <div class="text-base font-semibold truncate">${escapeHtml(o.title)}</div>
+                  ${urgent ? `<span class="pf-pill pf-pill--bad">СРОЧНО</span>` : `<span class="pf-pill pf-pill--info">Приоритет ${escapeHtml(o.priority)}</span>`}
+                </div>
+                <div class="text-xs mt-1" style="color: var(--pf-sub);">
+                  Клиент: <span class="font-semibold">${escapeHtml(o.customer || '—')}</span> · Остаток: <span class="font-semibold">${escapeHtml(rem)}</span> · Создан: <span class="font-semibold">${escapeHtml(fmtDateTime(o.created_at))}</span>
+                </div>
+              </div>
+              <button class="px-3 py-2 rounded-xl hover:bg-black/5" data-action="order_menu">Меню</button>
+            </div>
+
+            <div class="mt-3 pf-divider"></div>
+            <div class="mt-3">
+              <div class="text-sm font-semibold">${escapeHtml(modelTitle)}</div>
+              ${o.notes ? `<div class="mt-1 text-xs" style="color: var(--pf-sub);">Примечание: ${escapeHtml(o.notes)}</div>` : `<div class="mt-1 text-xs" style="color: var(--pf-sub);">Без примечаний.</div>`}
+              <div class="mt-3 flex gap-2">
+                <button class="flex-1 px-3 py-2 rounded-xl" style="background: rgba(47,107,255,.08); border: 1px solid rgba(47,107,255,.22); color: #1d46aa;" data-action="order_start">Запустить печать</button>
+                <button class="px-3 py-2 rounded-xl" style="background: rgba(0,0,0,.04);" data-action="order_decrement">−1 остаток</button>
+              </div>
+              <div class="mt-2 text-[11px]" style="color: var(--pf-sub);">Логика v2.6.7: при финише печати остаток должен декрементироваться автоматически.</div>
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      const modelCards = models.map(m => {
+        const bbox = m.bbox_mm || {};
+        return `
+          <article class="pf-card p-4" data-model-id="${escapeHtml(m.id)}">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <div class="text-base font-semibold truncate">${escapeHtml(m.title)}</div>
+                  <span class="pf-pill pf-pill--info">${escapeHtml((m.kind || 'stl').toUpperCase())}</span>
+                </div>
+                <div class="text-xs mt-1" style="color: var(--pf-sub);">
+                  Объём: <span class="font-semibold">${escapeHtml(fmtCm3(m.volume_cm3))}</span> · Габариты: <span class="font-semibold">${escapeHtml(fmtMm(bbox.x))}</span> × <span class="font-semibold">${escapeHtml(fmtMm(bbox.y))}</span> × <span class="font-semibold">${escapeHtml(fmtMm(bbox.z))}</span>
+                </div>
+              </div>
+              <button class="px-3 py-2 rounded-xl hover:bg-black/5" data-action="model_menu">Меню</button>
+            </div>
+
+            <div class="mt-3 pf-divider"></div>
+            <div class="mt-3 flex items-center justify-between gap-3">
+              <div class="text-xs" style="color: var(--pf-sub);">
+                Время: <span class="font-semibold">${escapeHtml(fmtHours(m.est_time_sec))}</span> · Вес: <span class="font-semibold">${escapeHtml(Number.isFinite(m.est_weight_g) ? m.est_weight_g + ' г' : '—')}</span>
+              </div>
+              <button class="px-3 py-2 rounded-xl" style="background: rgba(0,0,0,.04);" data-action="anti_vermicelli">Анти‑Вермишель</button>
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      const block = (title, content, hint) => `
+        <div class="pf-card p-4">
+          <div class="flex items-center justify-between">
+            <div class="text-base font-semibold">${escapeHtml(title)}</div>
+            ${hint ? `<div class="text-xs" style="color: var(--pf-sub);">${escapeHtml(hint)}</div>` : ''}
+          </div>
+        </div>
+        <div class="space-y-3">${content || `
+          <div class="pf-card p-4">
+            <div class="text-sm font-semibold">Пусто</div>
+            <div class="text-xs text-gray-500 mt-1">Данных пока нет.</div>
+          </div>
+        `}</div>
+      `;
+
+      const combined = ordersFirst
+        ? `${block('Заказы', orderCards, 'Заказы всегда выше моделей')}${block('Модели', modelCards, 'Сортировка по объёму')}`
+        : `${block('Модели', modelCards, 'Сортировка по объёму')}${block('Заказы', orderCards, 'Заказы могут быть ниже моделей')}`;
+
+      root.innerHTML = `
+        <div class="space-y-3">${combined}</div>
+      `;
+
+      // Actions
+      $$('[data-action="order_menu"]', root).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const card = e.target.closest('[data-order-id]');
+          const id = card?.getAttribute('data-order-id');
+          const order = state.orders.find(o => o.id === id);
+          if (!order){ toast('Не удалось определить заказ.'); return; }
+          toast(`Меню заказа: ${order.title}. (В реальном проекте: редактирование/привязка к моделям/планирование.)`);
+        });
+      });
+
+      $$('[data-action="order_decrement"]', root).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const card = e.target.closest('[data-order-id]');
+          const id = card?.getAttribute('data-order-id');
+          const order = state.orders.find(o => o.id === id);
+          if (!order){ toast('Не удалось определить заказ.'); return; }
+          if (!Number.isFinite(order.remaining_qty)) order.remaining_qty = 0;
+          if (order.remaining_qty <= 0){ toast('Остаток уже равен 0.'); return; }
+          order.remaining_qty -= 1;
+          toast(`Остаток «${order.title}»: теперь ${order.remaining_qty}.`);
+          renderWork();
+        });
+      });
+
+      $$('[data-action="order_start"]', root).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const card = e.target.closest('[data-order-id]');
+          const id = card?.getAttribute('data-order-id');
+          const order = state.orders.find(o => o.id === id);
+          if (!order){ toast('Не удалось определить заказ.'); return; }
+          toast(`Запуск печати заказа «${order.title}»: в демо UI это действие не отправляет команду на backend.`);
+        });
+      });
+
+      $$('[data-action="model_menu"]', root).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const card = e.target.closest('[data-model-id]');
+          const id = card?.getAttribute('data-model-id');
+          const model = state.models.find(m => m.id === id);
+          if (!model){ toast('Не удалось определить модель.'); return; }
+          toast(`Меню модели: ${model.title}. (В реальном проекте: загрузчик G-code+STL, метрики слайсера, предпросмотр.)`);
+        });
+      });
+
+      $$('[data-action="anti_vermicelli"]', root).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const card = e.target.closest('[data-model-id]');
+          const id = card?.getAttribute('data-model-id');
+          const model = state.models.find(m => m.id === id);
+          if (!model){ toast('Не удалось определить модель.'); return; }
+
+          // Анти-Вермишель: проверка на влезание в самый маленький принтер из списка.
+          // В реальной системе выбор принтера задаётся явно.
+          const printers = state.printers.slice().sort((a,b) => bedArea(a) - bedArea(b));
+          const p = printers[0];
+          if (!p){ toast('Нет принтеров для проверки.'); return; }
+
+          const bx = Number(model.bbox_mm?.x);
+          const by = Number(model.bbox_mm?.y);
+          const bz = Number(model.bbox_mm?.z);
+          if (![bx,by,bz].every(Number.isFinite)){
+            toast('Недостаточно данных для проверки габаритов модели.');
+            return;
+          }
+
+          const ex = bx - Number(p.bed_x);
+          const ey = by - Number(p.bed_y);
+          const ez = bz - Number(p.bed_z);
+
+          if (ex <= 0 && ey <= 0 && ez <= 0){
+            toast(`Анти‑Вермишель: модель «${model.title}» помещается на «${p.name}».`);
+            return;
+          }
+
+          const parts = [];
+          if (ex > 0) parts.push(`X превышение на ${Math.round(ex*10)/10} мм`);
+          if (ey > 0) parts.push(`Y превышение на ${Math.round(ey*10)/10} мм`);
+          if (ez > 0) parts.push(`Z превышение на ${Math.round(ez*10)/10} мм`);
+          toast(`Анти‑Вермишель: модель не помещается на «${p.name}»: ${parts.join('; ')}.` , { ms: 5200 });
+        });
+      });
+    }
+
+    function settingRow({title, subtitle, iconSvg, bg}){
+      const bgStyle = `background: ${bg};`;
+      return `
+        <button class="w-full pf-card px-3 py-3 flex items-center gap-3 text-left hover:bg-black/5" style="box-shadow:none; background: transparent;" data-action="setting">
+          <div class="pf-setting-icon" style="${bgStyle}">${iconSvg}</div>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-semibold truncate">${escapeHtml(title)}</div>
+            ${subtitle ? `<div class="text-xs" style="color: var(--pf-sub);">${escapeHtml(subtitle)}</div>` : ''}
+          </div>
+          <div class="text-gray-400">
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M9 18 15 12 9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </button>
+      `;
+    }
+
+    function renderProfile(){
+      const root = $('#tab-profile');
+      const u = state.user;
+      const fullName = `${safeText(u.first_name)} ${safeText(u.last_name)}`.trim() || 'Пользователь';
+      const username = u.username ? '@' + u.username : '—';
+
+      const avatar = u.photo_url
+        ? `<img src="${escapeHtml(u.photo_url)}" alt="Аватар" class="h-16 w-16 rounded-full object-cover" />`
+        : `<div class="h-16 w-16 rounded-full" style="background: linear-gradient(135deg, rgba(47,107,255,.25), rgba(124,58,237,.25)); display:grid; place-items:center;">
+             <div class="text-xl font-bold" style="color: rgba(17,24,39,.7);">${escapeHtml(fullName.slice(0,1).toUpperCase())}</div>
+           </div>`;
+
+      const plan = safeText(state.subscription?.plan || 'FREE');
+      const lim = state.subscription?.limit_printers;
+      const limLabel = lim === Infinity ? '∞' : safeText(lim);
+
+      const commonSettings = [
+        {
+          title: 'Подписка',
+          subtitle: `Ваш план: ${plan} · лимит принтеров: ${limLabel}`,
+          bg: 'linear-gradient(135deg, rgba(47,107,255,.18), rgba(6,182,212,.16))',
+          iconSvg: `
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#1d46aa">
+              <path d="M12 2 20 6v6c0 5-3.5 9.4-8 10-4.5-.6-8-5-8-10V6l8-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M9 12l2 2 4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          `
+        },
+        {
+          title: 'Загрузчик STL / G-code',
+          subtitle: 'Единый загрузчик: время/вес из комментариев слайсера',
+          bg: 'linear-gradient(135deg, rgba(124,58,237,.18), rgba(47,107,255,.14))',
+          iconSvg: `
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#5b21b6">
+              <path d="M12 3v10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M8 9l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          `
+        },
+        {
+          title: 'Анти‑Вермишель',
+          subtitle: 'Проверка влезания модели в bed X/Y/Z с детальным отчётом',
+          bg: 'linear-gradient(135deg, rgba(255,179,0,.18), rgba(255,59,48,.10))',
+          iconSvg: `
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#8a5a00">
+              <path d="M12 2a10 10 0 1 0 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M12 7v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M21 2v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          `
+        },
+        {
+          title: 'Уведомления',
+          subtitle: 'Безопасные ответы и редактирование сообщений (safe_* helpers)',
+          bg: 'linear-gradient(135deg, rgba(0,200,83,.16), rgba(6,182,212,.12))',
+          iconSvg: `
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#067a34">
+              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          `
+        },
+      ];
+
+      const adminSettings = [
+        {
+          title: 'Админ‑панель',
+          subtitle: 'Пользователи, подписки, промокоды, база моделей принтеров',
+          bg: 'linear-gradient(135deg, rgba(255,59,48,.16), rgba(124,58,237,.12))',
+          iconSvg: `
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#a61a12">
+              <path d="M12 1 3 5v6c0 5.5 3.8 10.3 9 12 5.2-1.7 9-6.5 9-12V5l-9-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M12 10a2 2 0 0 1 2 2v3H10v-3a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M10.5 10V8.75a1.5 1.5 0 1 1 3 0V10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          `
+        },
+      ];
+
+      const settingsHtml = commonSettings.map(settingRow).join('');
+      const adminHtml = state.isAdmin
+        ? `
+          <div class="mt-3 pf-card p-4">
+            <div class="flex items-center justify-between">
+              <div class="text-base font-semibold">Админ‑панель</div>
+              <span class="pf-badge">ADMIN</span>
+            </div>
+            <div class="text-xs mt-1" style="color: var(--pf-sub);">Раздел виден только администраторам.</div>
+          </div>
+          <div class="pf-card p-2" style="box-shadow: var(--pf-shadow);">
+            ${adminSettings.map(settingRow).join('')}
+          </div>
+        `
+        : '';
+
+      root.innerHTML = `
+        <div class="space-y-3">
+          <div class="pf-card p-4">
+            <div class="flex items-center gap-3">
+              ${avatar}
+              <div class="min-w-0">
+                <div class="text-base font-semibold truncate">${escapeHtml(fullName)}</div>
+                <div class="text-xs" style="color: var(--pf-sub);">${escapeHtml(username)} · ID: <span class="font-semibold">${escapeHtml(u.id ?? '—')}</span></div>
+                <div class="mt-2 flex items-center gap-2">
+                  <span class="pf-pill pf-pill--info">План: ${escapeHtml(plan)}</span>
+                  ${state.isDemo ? `<span class="pf-badge">ДЕМО</span>` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pf-card p-4">
+            <div class="text-base font-semibold">Настройки и функции</div>
+            <div class="text-xs mt-1" style="color: var(--pf-sub);">Интерфейс в стиле Telegram Native 2024: белые блоки, radius 12px, разделители.</div>
+          </div>
+
+          <div class="pf-card p-2" style="box-shadow: var(--pf-shadow);">
+            ${settingsHtml}
+          </div>
+
+          ${adminHtml}
+
+          <div class="pf-card p-4">
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <div class="text-sm font-semibold">О проекте</div>
+                <div class="text-xs" style="color: var(--pf-sub);">v${escapeHtml(APP_VERSION)}</div>
+              </div>
+              <div class="text-xs" style="color: var(--pf-sub);">Разработчик: <a class="font-semibold" href="https://t.me/${encodeURIComponent(DEV_HANDLE.replace('@',''))}" target="_blank" rel="noreferrer">${escapeHtml(DEV_HANDLE)}</a></div>
+              <div class="text-xs" style="color: var(--pf-sub);">Поддержать: <a class="font-semibold" href="${escapeHtml(DONATE_URL)}" target="_blank" rel="noreferrer">Донат</a></div>
+              <div class="mt-2 flex gap-2">
+                <button id="copyDebug" class="px-3 py-2 rounded-xl" style="background: rgba(0,0,0,.04);">Скопировать диагностику</button>
+                <button id="openDonate" class="px-3 py-2 rounded-xl" style="background: rgba(47,107,255,.08); border: 1px solid rgba(47,107,255,.22); color: #1d46aa;">Поддержать</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Actions
+      $$('#tab-profile [data-action="setting"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          toast('Этот экран — демонстрация UI. В реальном проекте здесь открываются соответствующие модули.');
+        });
+      });
+
+      $('#openDonate')?.addEventListener('click', () => {
+        window.open(DONATE_URL, '_blank', 'noopener,noreferrer');
+      });
+
+      $('#copyDebug')?.addEventListener('click', async () => {
+        const dbg = {
+          version: APP_VERSION,
+          use_mock: USE_MOCK,
+          is_demo: state.isDemo,
+          is_admin: state.isAdmin,
+          user: state.user,
+          subscription: state.subscription,
+          counts: { printers: state.printers.length, orders: state.orders.length, models: state.models.length },
+          ua: navigator.userAgent,
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          tg: {
+            hasWebApp: Boolean(window.Telegram?.WebApp),
+            platform: safeText(window.Telegram?.WebApp?.platform || ''),
+            colorScheme: safeText(window.Telegram?.WebApp?.colorScheme || ''),
+          }
+        };
+        try{
+          await navigator.clipboard.writeText(JSON.stringify(dbg, null, 2));
+          toast('Диагностика скопирована в буфер обмена.');
+        } catch {
+          toast('Не удалось скопировать (ограничения браузера).');
         }
+      });
+    }
 
-        function updateSubscriptionUI() {
-            const sub = appData.subscription;
-            if (!sub) return;
+    function renderAll(){
+      $('#loading')?.classList.add('hidden');
+      $('#tab-printers')?.classList.toggle('hidden', state.ui.activeTab !== 'printers');
+      $('#tab-work')?.classList.toggle('hidden', state.ui.activeTab !== 'work');
+      $('#tab-profile')?.classList.toggle('hidden', state.ui.activeTab !== 'profile');
 
-            document.getElementById('planBadge').textContent = sub.plan;
-            
-            // Printers
-            document.getElementById('limitPrinters').textContent = `${sub.printers.current} / ${sub.printers.max}`;
-            const printersFill = document.getElementById('limitPrintersFill');
-            const printersPercent = (sub.printers.current / sub.printers.max) * 100;
-            printersFill.style.width = `${printersPercent}%`;
-            printersFill.className = 'limit-fill' + (printersPercent > 90 ? ' danger' : printersPercent > 70 ? ' warning' : '');
+      if (state.ui.activeTab === 'printers') renderPrinters();
+      if (state.ui.activeTab === 'work') renderWork();
+      if (state.ui.activeTab === 'profile') renderProfile();
 
-            // Models
-            document.getElementById('limitModels').textContent = `${sub.models.current} / ${sub.models.max}`;
-            const modelsFill = document.getElementById('limitModelsFill');
-            const modelsPercent = (sub.models.current / sub.models.max) * 100;
-            modelsFill.style.width = `${modelsPercent}%`;
-            modelsFill.className = 'limit-fill' + (modelsPercent > 90 ? ' danger' : modelsPercent > 70 ? ' warning' : '');
+      // Sub-title
+      const sub = state.isDemo
+        ? 'Демо режим: backend недоступен'
+        : `Данные синхронизированы · План: ${safeText(state.subscription?.plan || 'FREE')}`;
+      const subtitle = $('#subtitle');
+      if (subtitle) subtitle.textContent = sub;
+    }
 
-            // Prints
-            document.getElementById('limitPrints').textContent = `${sub.prints.current} / ${sub.prints.max}`;
-            const printsFill = document.getElementById('limitPrintsFill');
-            const printsPercent = (sub.prints.current / sub.prints.max) * 100;
-            printsFill.style.width = `${printsPercent}%`;
-            printsFill.className = 'limit-fill' + (printsPercent > 90 ? ' danger' : printsPercent > 70 ? ' warning' : '');
+    function setTab(tab){
+      state.ui.activeTab = tab;
+      $$('.pf-tab-btn').forEach(b => {
+        const is = b.getAttribute('data-tab') === tab;
+        b.setAttribute('aria-selected', is ? 'true' : 'false');
+      });
+      renderAll();
+    }
+
+    function openFilter(open){
+      const m = $('#filterModal');
+      if (!m) return;
+      m.dataset.open = open ? 'true' : 'false';
+      if (open){
+        // sync UI
+        $('#ordersFirst').checked = Boolean(state.ui.filters.ordersFirst);
+      }
+    }
+
+    function bindUI(){
+      // Tabs
+      $$('.pf-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => setTab(btn.getAttribute('data-tab')));
+      });
+
+      // Search
+      const si = $('#searchInput');
+      if (si){
+        si.addEventListener('input', () => {
+          state.ui.search = safeText(si.value);
+          renderAll();
+        });
+      }
+      $('#clearSearch')?.addEventListener('click', () => {
+        state.ui.search = '';
+        if (si) si.value = '';
+        renderAll();
+      });
+
+      // Refresh
+      $('#refreshBtn')?.addEventListener('click', async () => {
+        toast('Обновляю данные…');
+        $('#loading')?.classList.remove('hidden');
+        try{
+          await bootstrap();
+        } finally {
+          renderAll();
+          toast(state.isDemo ? 'Показаны демо‑данные.' : 'Данные обновлены.');
         }
+      });
 
-        // ============================================
-        // UI FUNCTIONS
-        // ============================================
+      // Filter modal
+      $('#filterBtn')?.addEventListener('click', () => openFilter(true));
+      $('#closeFilter')?.addEventListener('click', () => openFilter(false));
+      $('#filterModal')?.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'filterModal') openFilter(false);
+      });
 
-        function switchTab(tabName) {
-            // Update tabs
-            document.querySelectorAll('.tab-item').forEach(tab => {
-                tab.classList.toggle('active', tab.dataset.tab === tabName);
-            });
+      // Filter selection buttons (delegation)
+      $('#filterModal')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-filter]');
+        if (!btn) return;
+        const filter = btn.getAttribute('data-filter');
+        const value = btn.getAttribute('data-value');
+        if (!filter) return;
+        if (filter === 'printer_size') state.ui.filters.printer_size = value;
+        if (filter === 'model_sort') state.ui.filters.model_sort = value;
+        toast('Фильтр выбран. Нажмите «Применить».', { ms: 1400 });
+      });
 
-            // Update screens
-            document.querySelectorAll('.screen').forEach(screen => {
-                screen.classList.remove('active');
-            });
-            document.getElementById(`screen${capitalize(tabName)}`).classList.add('active');
+      $('#applyFilters')?.addEventListener('click', () => {
+        state.ui.filters.ordersFirst = Boolean($('#ordersFirst')?.checked);
+        openFilter(false);
+        renderAll();
+        toast('Фильтры применены.');
+      });
 
-            // Haptic
-            if (tg?.HapticFeedback) {
-                tg.HapticFeedback.selectionChanged();
-            }
+      $('#resetFilters')?.addEventListener('click', () => {
+        state.ui.filters = { printer_size: 'all', model_sort: 'volume_desc', ordersFirst: true };
+        if ($('#ordersFirst')) $('#ordersFirst').checked = true;
+        openFilter(false);
+        renderAll();
+        toast('Фильтры сброшены.');
+      });
+
+      // Keyboard escape closes modal
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') openFilter(false);
+      });
+    }
+
+    async function init(){
+      applyTelegramChrome();
+      bindUI();
+
+      // Small UX: show version in title
+      document.title = `PrintFarm v${APP_VERSION}`;
+
+      await bootstrap();
+      renderAll();
+
+      // If run in Telegram: set main button hints / haptic optionally
+      try{
+        const tg = window.Telegram?.WebApp;
+        if (tg){
+          tg.setHeaderColor?.(tg.colorScheme === 'dark' ? '#0f1115' : '#f1f2f6');
+          tg.setBackgroundColor?.(tg.colorScheme === 'dark' ? '#0f1115' : '#f1f2f6');
         }
+      } catch {
+        // ignore
+      }
 
-        function openFilter() {
-            document.getElementById('filterOverlay').classList.add('active');
-            if (tg?.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('light');
-            }
-        }
+      toast(state.isDemo ? 'Демо режим: backend недоступен.' : 'Подключение к серверу установлено.');
+    }
 
-        function closeFilter() {
-            document.getElementById('filterOverlay').classList.remove('active');
-        }
-
-        function applyFilter(filter) {
-            currentFilter = filter;
-            
-            // Update UI
-            document.querySelectorAll('.popover-item').forEach(item => {
-                item.classList.toggle('selected', item.dataset.filter === filter);
-            });
-
-            renderPrinters();
-            closeFilter();
-
-            if (tg?.HapticFeedback) {
-                tg.HapticFeedback.notificationOccurred('success');
-            }
-        }
-
-        function sortPrinters(printers, filter) {
-            switch (filter) {
-                case 'free':
-                    return printers.sort((a, b) => {
-                        const order = { FREE: 0, BUSY: 1, PAUSED: 2, REPAIR: 3 };
-                        return order[a.status] - order[b.status];
-                    });
-                case 'busy':
-                    return printers.sort((a, b) => {
-                        const order = { BUSY: 0, PAUSED: 1, FREE: 2, REPAIR: 3 };
-                        return order[a.status] - order[b.status];
-                    });
-                case 'time':
-                    return printers.sort((a, b) => (b.progress || 0) - (a.progress || 0));
-                case 'name':
-                default:
-                    return printers.sort((a, b) => a.name.localeCompare(b.name));
-            }
-        }
-
-        function openPrinterActions(printerId) {
-            const printer = appData.printers.find(p => p.id === printerId);
-            if (!printer) return;
-
-            selectedPrinter = printer;
-
-            document.getElementById('actionSheetTitle').textContent = printer.name;
-            document.getElementById('actionSheetSubtitle').textContent = `${printer.brand} | ${getStatusText(printer.status)}`;
-
-            let actions = '';
-            
-            switch (printer.status) {
-                case 'FREE':
-                    actions = `
-                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'start')">Начать печать</div>
-                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'repair')">В ремонт</div>
-                    `;
-                    break;
-                case 'BUSY':
-                    actions = `
-                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'pause')">Пауза</div>
-                        <div class="action-sheet-item danger" onclick="performAction(${printerId}, 'stop')">Остановить</div>
-                    `;
-                    break;
-                case 'PAUSED':
-                    actions = `
-                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'resume')">Продолжить</div>
-                        <div class="action-sheet-item danger" onclick="performAction(${printerId}, 'stop')">Остановить</div>
-                    `;
-                    break;
-                case 'REPAIR':
-                    actions = `
-                        <div class="action-sheet-item" onclick="performAction(${printerId}, 'start')">Готов к работе</div>
-                    `;
-                    break;
-            }
-
-            document.getElementById('actionSheetActions').innerHTML = actions;
-            document.getElementById('actionSheetOverlay').classList.add('active');
-
-            if (tg?.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('medium');
-            }
-        }
-
-        function closeActionSheet() {
-            document.getElementById('actionSheetOverlay').classList.remove('active');
-            selectedPrinter = null;
-        }
-
-        function openModelDetails(modelId) {
-            const model = appData.models.find(m => m.id === modelId);
-            if (!model) return;
-
-            // Show model info via Telegram popup
-            if (tg?.showPopup) {
-                tg.showPopup({
-                    title: model.name,
-                    message: `Размеры: ${model.dimensions}мм\nОбъем: ${model.volume}см³\nВремя печати: ${model.print_time}`,
-                    buttons: [
-                        { id: 'print', type: 'default', text: 'Печатать' },
-                        { id: 'close', type: 'cancel' }
-                    ]
-                }, (buttonId) => {
-                    if (buttonId === 'print') {
-                        // Find free printer and start print
-                        const freePrinter = appData.printers.find(p => p.status === 'FREE');
-                        if (freePrinter) {
-                            performAction(freePrinter.id, 'start');
-                        }
-                    }
-                });
-            } else {
-                alert(`${model.name}\n\nРазмеры: ${model.dimensions}мм\nОбъем: ${model.volume}см³\nВремя печати: ${model.print_time}`);
-            }
-
-            if (tg?.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('light');
-            }
-        }
-
-        function manageSubscription() {
-            if (tg?.openTelegramLink) {
-                tg.openTelegramLink('https://t.me/denchy');
-            } else {
-                window.open('https://t.me/denchy', '_blank');
-            }
-        }
-
-        function openSettings() {
-            if (tg?.showPopup) {
-                tg.showPopup({
-                    title: 'Настройки',
-                    message: 'Настройки доступны в боте',
-                    buttons: [{ type: 'ok' }]
-                });
-            }
-        }
-
-        function openHelp() {
-            if (tg?.openTelegramLink) {
-                tg.openTelegramLink('https://t.me/denchy');
-            }
-        }
-
-        // ============================================
-        // UTILITY FUNCTIONS
-        // ============================================
-
-        function getStatusText(status) {
-            const texts = {
-                FREE: 'Свободен',
-                BUSY: 'Печатает',
-                PAUSED: 'Пауза',
-                REPAIR: 'Ремонт'
-            };
-            return texts[status] || status;
-        }
-
-        function getOrderStatusText(status) {
-            const texts = {
-                pending: 'В очереди',
-                printing: 'Печатается',
-                done: 'Выполнен'
-            };
-            return texts[status] || status;
-        }
-
-        function capitalize(str) {
-            return str.charAt(0).toUpperCase() + str.slice(1);
-        }
-
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // ============================================
-        // DEBUG / DEMO MODE
-        // ============================================
-
-        console.log(`PrintFarm Mini App v${APP_VERSION}`);
-        console.log('Developer: @denchy');
-        console.log('API Base:', API_BASE);
-
-    </script>
+    init();
+  </script>
 </body>
 </html>
