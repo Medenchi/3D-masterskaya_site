@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
-  <title>PrintFarm Mini App v2.6.7</title>
+  <title>PrintFarm Mini App v2.6.8</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
@@ -35,15 +35,9 @@
       overscroll-behavior: none;
     }
 
-    /* iOS/Telegram-like blocks */
-    .pf-card{
-      background: var(--pf-card);
-      border-radius: var(--pf-radius);
-      box-shadow: var(--pf-shadow);
-    }
+    .pf-card{ background: var(--pf-card); border-radius: var(--pf-radius); box-shadow: var(--pf-shadow); }
     .pf-divider{ border-top: 1px solid var(--pf-divider); }
 
-    /* Bottom bar */
     .pf-bottom-bar{
       position: fixed;
       left: 0; right: 0;
@@ -56,17 +50,12 @@
       -webkit-backdrop-filter: blur(18px);
       z-index: 50;
     }
-    .pf-icon{
-      width: 24px;
-      height: 24px;
-      display: inline-block;
-    }
+    .pf-icon{ width: 24px; height: 24px; display: inline-block; }
 
     .pf-tab-btn[aria-selected="true"] .pf-tab-label{ color: var(--pf-accent); }
     .pf-tab-btn[aria-selected="true"] svg{ color: var(--pf-accent); }
     .pf-tab-btn[aria-selected="false"] svg{ color: rgba(17,24,39,.55); }
 
-    /* Modals */
     .pf-modal-backdrop{
       position: fixed;
       inset: 0;
@@ -87,7 +76,6 @@
       box-shadow: 0 -14px 34px rgba(0,0,0,.18);
     }
 
-    /* Skeleton */
     .pf-skeleton{
       background: linear-gradient(90deg, rgba(0,0,0,.06), rgba(0,0,0,.03), rgba(0,0,0,.06));
       background-size: 200% 100%;
@@ -96,78 +84,29 @@
     }
     @keyframes pfShimmer{ 0%{ background-position: 0% 0; } 100%{ background-position: 200% 0; } }
 
-    /* Status pills (neon-ish) */
-    .pf-pill{
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-weight: 600;
-      font-size: 12px;
-      letter-spacing: .2px;
-    }
+    .pf-pill{ border-radius: 999px; padding: 4px 10px; font-weight: 600; font-size: 12px; letter-spacing: .2px; }
     .pf-pill--good{ background: rgba(0,200,83,.12); color: #067a34; border: 1px solid rgba(0,200,83,.22); }
     .pf-pill--warn{ background: rgba(255,179,0,.14); color: #8a5a00; border: 1px solid rgba(255,179,0,.22); }
     .pf-pill--bad{ background: rgba(255,59,48,.12); color: #a61a12; border: 1px solid rgba(255,59,48,.22); }
     .pf-pill--info{ background: rgba(47,107,255,.12); color: #1d46aa; border: 1px solid rgba(47,107,255,.22); }
 
-    /* Settings icons with colored rounded background (like iOS) */
-    .pf-setting-icon{
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
-      display: grid;
-      place-items: center;
-      flex: 0 0 auto;
-    }
+    .pf-setting-icon{ width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: 0 0 auto; }
 
-    /* Tap highlight */
     .pf-tap{ -webkit-tap-highlight-color: transparent; }
 
-    /* Ensure content not hidden behind bottom bar */
     .pf-main{ padding-bottom: 90px; }
 
-    /* Tiny toast */
-    .pf-toast-wrap{
-      position: fixed;
-      left: 0; right: 0;
-      top: calc(10px + var(--pf-safe-top));
-      display: flex;
-      justify-content: center;
-      pointer-events: none;
-      z-index: 70;
-    }
-    .pf-toast{
-      pointer-events: auto;
-      background: rgba(17,24,39,.92);
-      color: white;
-      padding: 10px 12px;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.25);
-      max-width: min(680px, calc(100% - 24px));
-      font-size: 13px;
-      line-height: 1.3;
-      display: none;
-    }
+    .pf-toast-wrap{ position: fixed; left: 0; right: 0; top: calc(10px + var(--pf-safe-top)); display: flex; justify-content: center; pointer-events: none; z-index: 70; }
+    .pf-toast{ pointer-events: auto; background: rgba(17,24,39,.92); color: white; padding: 10px 12px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); max-width: min(680px, calc(100% - 24px)); font-size: 13px; line-height: 1.3; display: none; }
     .pf-toast[data-open="true"]{ display: block; }
 
-    /* Small badge */
-    .pf-badge{
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: rgba(124,58,237,.12);
-      border: 1px solid rgba(124,58,237,.22);
-      color: #5b21b6;
-    }
+    .pf-badge{ font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(124,58,237,.12); border: 1px solid rgba(124,58,237,.22); color: #5b21b6; }
   </style>
 </head>
 <body class="pf-tap">
-  <div class="pf-toast-wrap">
-    <div id="toast" class="pf-toast" role="status" aria-live="polite"></div>
-  </div>
+  <div class="pf-toast-wrap"><div id="toast" class="pf-toast" role="status" aria-live="polite"></div></div>
 
   <div class="max-w-3xl mx-auto px-3">
-    <!-- Header -->
     <header class="pt-4" style="padding-top: calc(16px + var(--pf-safe-top));">
       <div class="flex items-center justify-between">
         <div class="min-w-0">
@@ -177,150 +116,88 @@
         <div class="flex items-center gap-2">
           <button id="filterBtn" class="pf-card px-3 py-2 flex items-center gap-2" title="Сортировка и фильтры">
             <span class="text-sm font-semibold">Фильтр</span>
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           </button>
           <button id="refreshBtn" class="pf-card px-3 py-2 flex items-center gap-2" title="Обновить">
             <span class="text-sm font-semibold">Обновить</span>
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path d="M20 4v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
       </div>
 
       <div class="mt-3 pf-card px-3 py-2 flex items-center gap-2">
-        <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Z" stroke="currentColor" stroke-width="2"/>
-          <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
+        <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Z" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <input id="searchInput" class="w-full bg-transparent outline-none text-sm" placeholder="Поиск: принтер, заказ, модель…" autocomplete="off" />
         <button id="clearSearch" class="text-sm text-gray-500 px-2 py-1 rounded-lg hover:bg-black/5" title="Очистить">Сброс</button>
       </div>
 
       <div id="banner" class="mt-3 hidden">
         <div class="pf-card px-3 py-2 flex items-start gap-2">
-          <div class="mt-[2px]">
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 9v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path d="M12 17h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-              <path d="M10.29 3.86 2.82 17.18A2 2 0 0 0 4.55 20h14.9a2 2 0 0 0 1.73-2.82L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            </svg>
-          </div>
+          <div class="mt-[2px]"><svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 9v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 17h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M10.29 3.86 2.82 17.18A2 2 0 0 0 4.55 20h14.9a2 2 0 0 0 1.73-2.82L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div>
           <div class="min-w-0">
             <div class="text-sm font-semibold">API недоступно</div>
-            <div class="text-xs text-gray-500">Показаны демо‑данные. Для реальных данных требуется backend и эндпоинт <code class="px-1 py-[1px] rounded bg-black/5">POST /api/bootstrap</code>.</div>
+            <div class="text-xs text-gray-500">Проверьте backend: нужен <code class="px-1 py-[1px] rounded bg-black/5">GET /api/bootstrap</code> и заголовок <code class="px-1 py-[1px] rounded bg-black/5">X-Telegram-InitData</code>.</div>
           </div>
         </div>
       </div>
     </header>
 
-    <!-- Main -->
     <main class="pf-main mt-4" id="main">
-      <!-- Tabs -->
       <section id="tab-printers" class="tab-pane"></section>
       <section id="tab-work" class="tab-pane hidden"></section>
       <section id="tab-profile" class="tab-pane hidden"></section>
 
-      <!-- Initial loading skeleton -->
       <section id="loading" class="space-y-3">
-        <div class="pf-card p-4">
-          <div class="h-4 w-48 pf-skeleton"></div>
-          <div class="mt-3 h-3 w-64 pf-skeleton"></div>
-          <div class="mt-2 h-3 w-52 pf-skeleton"></div>
-        </div>
-        <div class="pf-card p-4">
-          <div class="h-4 w-40 pf-skeleton"></div>
-          <div class="mt-3 grid grid-cols-2 gap-3">
-            <div class="h-16 pf-skeleton"></div>
-            <div class="h-16 pf-skeleton"></div>
-          </div>
-        </div>
-        <div class="pf-card p-4">
-          <div class="h-4 w-56 pf-skeleton"></div>
-          <div class="mt-3 h-20 pf-skeleton"></div>
-        </div>
+        <div class="pf-card p-4"><div class="h-4 w-48 pf-skeleton"></div><div class="mt-3 h-3 w-64 pf-skeleton"></div><div class="mt-2 h-3 w-52 pf-skeleton"></div></div>
+        <div class="pf-card p-4"><div class="h-4 w-40 pf-skeleton"></div><div class="mt-3 grid grid-cols-2 gap-3"><div class="h-16 pf-skeleton"></div><div class="h-16 pf-skeleton"></div></div></div>
+        <div class="pf-card p-4"><div class="h-4 w-56 pf-skeleton"></div><div class="mt-3 h-20 pf-skeleton"></div></div>
       </section>
     </main>
   </div>
 
-  <!-- Bottom bar -->
   <nav class="pf-bottom-bar">
     <div class="max-w-3xl mx-auto px-6">
       <div class="grid grid-cols-3 gap-2">
         <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="printers" aria-selected="true">
-          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M7 7V4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" stroke="currentColor" stroke-width="2"/>
-            <path d="M7 17h10v5H7v-5Z" stroke="currentColor" stroke-width="2"/>
-            <path d="M6 7h12a4 4 0 0 1 4 4v4a2 2 0 0 1-2 2h-3v-4H7v4H4a2 2 0 0 1-2-2v-4a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="2"/>
-          </svg>
+          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 7V4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" stroke="currentColor" stroke-width="2"/><path d="M7 17h10v5H7v-5Z" stroke="currentColor" stroke-width="2"/><path d="M6 7h12a4 4 0 0 1 4 4v4a2 2 0 0 1-2 2h-3v-4H7v4H4a2 2 0 0 1-2-2v-4a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="2"/></svg>
           <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Принтеры</div>
         </button>
         <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="work" aria-selected="false">
-          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M9 7h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M9 11h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-          </svg>
+          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 7h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 11h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
           <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Заказы</div>
         </button>
         <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="profile" aria-selected="false">
-          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M20 21a8 8 0 1 0-16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" stroke="currentColor" stroke-width="2"/>
-          </svg>
+          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 21a8 8 0 1 0-16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" stroke="currentColor" stroke-width="2"/></svg>
           <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Профиль</div>
         </button>
       </div>
     </div>
   </nav>
 
-  <!-- Filter modal -->
   <div id="filterModal" class="pf-modal-backdrop" role="dialog" aria-modal="true" aria-label="Сортировка и фильтры">
     <div class="pf-modal">
       <div class="flex items-center justify-between">
         <div class="text-base font-semibold">Сортировка и фильтры</div>
         <button id="closeFilter" class="px-3 py-2 rounded-xl hover:bg-black/5">Закрыть</button>
       </div>
-
       <div class="mt-3 pf-divider"></div>
 
       <div class="mt-3 grid gap-3">
         <div>
           <div class="text-sm font-semibold">Принтеры</div>
           <div class="mt-2 grid grid-cols-2 gap-2">
-            <button class="pf-card px-3 py-2 text-left" data-filter="printer_size" data-value="all">
-              <div class="text-sm font-semibold">Все</div>
-              <div class="text-xs text-gray-500">Без ограничения по столу</div>
-            </button>
-            <button class="pf-card px-3 py-2 text-left" data-filter="printer_size" data-value="small">
-              <div class="text-sm font-semibold">Маленькие</div>
-              <div class="text-xs text-gray-500">Меньшая площадь стола</div>
-            </button>
-            <button class="pf-card px-3 py-2 text-left" data-filter="printer_size" data-value="big">
-              <div class="text-sm font-semibold">Большие</div>
-              <div class="text-xs text-gray-500">Большая площадь стола</div>
-            </button>
-            <button class="pf-card px-3 py-2 text-left" data-filter="printer_size" data-value="xl">
-              <div class="text-sm font-semibold">XL</div>
-              <div class="text-xs text-gray-500">Максимальная площадь стола</div>
-            </button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="printer_state" data-value="all"><div class="text-sm font-semibold">Все</div><div class="text-xs text-gray-500">Без ограничения</div></button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="printer_state" data-value="printing"><div class="text-sm font-semibold">Печатают</div><div class="text-xs text-gray-500">Только активные</div></button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="printer_state" data-value="idle"><div class="text-sm font-semibold">Свободны</div><div class="text-xs text-gray-500">Готовы к печати</div></button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="printer_state" data-value="problem"><div class="text-sm font-semibold">Проблемы</div><div class="text-xs text-gray-500">Пауза/ошибка/ремонт</div></button>
           </div>
         </div>
 
         <div>
           <div class="text-sm font-semibold">Модели</div>
           <div class="mt-2 grid grid-cols-2 gap-2">
-            <button class="pf-card px-3 py-2 text-left" data-filter="model_sort" data-value="volume_desc">
-              <div class="text-sm font-semibold">По объёму</div>
-              <div class="text-xs text-gray-500">Сначала самые объёмные</div>
-            </button>
-            <button class="pf-card px-3 py-2 text-left" data-filter="model_sort" data-value="volume_asc">
-              <div class="text-sm font-semibold">По объёму (↑)</div>
-              <div class="text-xs text-gray-500">Сначала компактные</div>
-            </button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="model_sort" data-value="new"><div class="text-sm font-semibold">Новые</div><div class="text-xs text-gray-500">Сначала свежие</div></button>
+            <button class="pf-card px-3 py-2 text-left" data-filter="model_sort" data-value="volume_desc"><div class="text-sm font-semibold">Объём</div><div class="text-xs text-gray-500">Сначала большие</div></button>
           </div>
         </div>
 
@@ -330,7 +207,7 @@
             <label class="flex items-center justify-between gap-3">
               <div class="min-w-0">
                 <div class="text-sm font-semibold">Заказы приоритетнее моделей</div>
-                <div class="text-xs text-gray-500">Отображать заказы первыми (логика v2.6.7)</div>
+                <div class="text-xs text-gray-500">Вкладка «Заказы»: сверху заказы, ниже модели</div>
               </div>
               <input id="ordersFirst" type="checkbox" class="h-5 w-5" checked />
             </label>
@@ -348,58 +225,32 @@
   <script>
     'use strict';
 
-    /**
-     * PrintFarm Mini App (демо-фронтенд)
-     * 
-     * Важное:
-     * 1) USE_MOCK = false — данные запрашиваются с backend через POST /api/bootstrap
-     * 2) При недоступности API включается безопасный fallback на демо-датасет, чтобы UI оставался работоспособным.
-     * 
-     * В реальном проекте сюда подключаются:
-     * - FastAPI backend, который возвращает актуальные данные по принтерам/заказам/моделям/подписке
-     * - Авторизация через Telegram initData
-     */
-
-    const APP_VERSION = '2.6.7';
-    const DEV_HANDLE = '@ТвойНик';
-    const DONATE_URL = 'https://example.com/donate';
-
-    // Требование: USE_MOCK = false.
-    const USE_MOCK = false;
+    const APP_VERSION = '2.6.8';
     const API_BASE = '';
 
     const state = {
-      bootstrapped: false,
-      isDemo: false,
-      isAdmin: false,
-      user: {
-        id: null,
-        first_name: 'Пользователь',
-        last_name: '',
-        username: '',
-        photo_url: ''
-      },
-      subscription: { plan: 'FREE', limit_printers: 1, expires_at: null },
+      apiOk: false,
+      server_time: null,
+      user: { id: null, first_name: 'Пользователь', photo_url: '', plan: 'FREE', limit_printers: 1, is_admin: false, is_banned: false },
       printers: [],
       models: [],
       orders: [],
-      ui: {
-        activeTab: 'printers',
-        search: '',
-        filters: {
-          printer_size: 'all',
-          model_sort: 'volume_desc',
-          ordersFirst: true,
-        }
-      }
+      admin: { lastResult: null },
+      ui: { activeTab: 'printers', search: '', filters: { printer_state: 'all', model_sort: 'new', ordersFirst: true } },
+      debug: { lastError: null }
     };
 
     const $ = (sel, root=document) => root.querySelector(sel);
     const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
-    function safeText(v){
-      if (v === null || v === undefined) return '';
-      return String(v);
+    function safeText(v){ return (v === null || v === undefined) ? '' : String(v); }
+    function escapeHtml(str){
+      return safeText(str)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'", '&#039;');
     }
 
     function toast(message, opts={}){
@@ -412,64 +263,44 @@
       toast._t = window.setTimeout(() => { el.dataset.open = 'false'; }, ms);
     }
 
-    function fmtMm(v){
-      const n = Number(v);
-      if (!Number.isFinite(n)) return '—';
-      return `${Math.round(n*10)/10} мм`;
-    }
-
-    function fmtCm3(v){
-      const n = Number(v);
-      if (!Number.isFinite(n)) return '—';
-      return `${Math.round(n*10)/10} см³`;
-    }
-
-    function fmtHours(seconds){
-      const s = Number(seconds);
-      if (!Number.isFinite(s) || s < 0) return '—';
-      const h = Math.floor(s / 3600);
-      const m = Math.floor((s % 3600) / 60);
-      return `${h} ч ${String(m).padStart(2,'0')} мин`;
-    }
-
     function fmtDateTime(iso){
       if (!iso) return '—';
       const d = new Date(iso);
       if (Number.isNaN(d.getTime())) return '—';
-      return d.toLocaleString('ru-RU', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleString('ru-RU', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
     }
 
-    function getTelegramUser(){
+    function fmtSeconds(sec){
+      sec = Math.max(0, Math.floor(Number(sec || 0)));
+      const h = Math.floor(sec/3600);
+      const m = Math.floor((sec%3600)/60);
+      const s = sec%60;
+      if (h>0) return `${h} ч ${String(m).padStart(2,'0')} мин`;
+      if (m>0) return `${m} мин ${String(s).padStart(2,'0')} с`;
+      return `${s} с`;
+    }
+
+    function getTgInitData(){
       try{
         const tg = window.Telegram?.WebApp;
-        const user = tg?.initDataUnsafe?.user;
+        if (tg?.initData && tg.initData.length > 0) return tg.initData;
+      } catch {}
+      return '';
+    }
+
+    function getTelegramUserUnsafe(){
+      try{
+        const user = window.Telegram?.WebApp?.initDataUnsafe?.user;
         if (!user) return null;
-        return {
-          id: user.id ?? null,
-          first_name: user.first_name ?? 'Пользователь',
-          last_name: user.last_name ?? '',
-          username: user.username ?? '',
-          photo_url: user.photo_url ?? ''
-        };
-      } catch {
-        return null;
-      }
+        return { id: user.id ?? null, first_name: user.first_name ?? 'Пользователь', photo_url: user.photo_url ?? '' };
+      } catch { return null; }
     }
 
     function applyTelegramChrome(){
       const tg = window.Telegram?.WebApp;
-      try{
-        tg?.ready?.();
-        tg?.expand?.();
-        // Нативное ощущение: отключаем свайп-бэк внутри WebView
-        tg?.disableVerticalSwipes?.();
-      } catch {
-        // игнорируем: в браузере API нет
-      }
+      try{ tg?.ready?.(); tg?.expand?.(); tg?.disableVerticalSwipes?.(); } catch {}
 
       try{
-        const theme = tg?.themeParams;
-        // Если тема тёмная — слегка адаптируем, но сохраняем Telegram Native 2024 стилистику.
         if (tg?.colorScheme === 'dark'){
           document.documentElement.style.setProperty('--pf-bg', '#0f1115');
           document.documentElement.style.setProperty('--pf-card', '#161a22');
@@ -478,464 +309,186 @@
           document.documentElement.style.setProperty('--pf-sub', '#9ca3af');
           document.querySelector('.pf-bottom-bar')?.style?.setProperty('background', 'rgba(22,26,34,.72)');
         }
-
-        // Акцент можно подхватить из темы Telegram (если задан), но не навязчиво.
-        const link = theme?.link_color;
-        if (link && typeof link === 'string'){
-          document.documentElement.style.setProperty('--pf-accent', link);
-        }
-      } catch {
-        // ignore
-      }
+        const link = tg?.themeParams?.link_color;
+        if (link && typeof link === 'string') document.documentElement.style.setProperty('--pf-accent', link);
+      } catch {}
     }
 
-    function demoData(){
-      return {
-        version: APP_VERSION,
-        server_time: new Date().toISOString(),
-        is_admin: true,
-        subscription: { plan: 'PRO', limit_printers: 5, expires_at: null },
-        printers: [
-          {
-            id: 'p1',
-            name: 'Bambu Lab X1C',
-            model: 'Bambu X1 Carbon',
-            bed_x: 256, bed_y: 256, bed_z: 256,
-            nozzle: 0.4,
-            status: 'printing',
-            status_label: 'Печатает',
-            current_job: { title: 'Заказ #1042 — Крепёж', eta_sec: 2*3600 + 15*60, progress: 0.62 },
-            updated_at: new Date(Date.now()-2*60*1000).toISOString(),
-          },
-          {
-            id: 'p2',
-            name: 'Prusa MK4',
-            model: 'Original Prusa MK4',
-            bed_x: 250, bed_y: 210, bed_z: 220,
-            nozzle: 0.4,
-            status: 'idle',
-            status_label: 'Свободен',
-            current_job: null,
-            updated_at: new Date(Date.now()-25*60*1000).toISOString(),
-          },
-          {
-            id: 'p3',
-            name: 'Voron 2.4 (350)',
-            model: 'Voron 2.4',
-            bed_x: 350, bed_y: 350, bed_z: 350,
-            nozzle: 0.6,
-            status: 'error',
-            status_label: 'Ошибка',
-            current_job: { title: 'Модель: Корпус', eta_sec: null, progress: 0.18 },
-            updated_at: new Date(Date.now()-5*60*1000).toISOString(),
-          }
-        ],
-        orders: [
-          {
-            id: 'o1042',
-            title: 'Заказ #1042',
-            customer: 'ООО «ТехПром»',
-            priority: 10,
-            remaining_qty: 7,
-            model_ref: 'm2',
-            notes: 'Срочно. Пластик PETG. Цвет — чёрный.',
-            created_at: new Date(Date.now()-2*24*3600*1000).toISOString(),
-          },
-          {
-            id: 'o1041',
-            title: 'Заказ #1041',
-            customer: 'Частный клиент',
-            priority: 5,
-            remaining_qty: 1,
-            model_ref: 'm1',
-            notes: 'Серый. Без постобработки.',
-            created_at: new Date(Date.now()-4*24*3600*1000).toISOString(),
-          }
-        ],
-        models: [
-          {
-            id: 'm1',
-            title: 'Кронштейн усиленный',
-            kind: 'stl',
-            volume_cm3: 24.1,
-            bbox_mm: { x: 118.2, y: 36.4, z: 42.0 },
-            est_time_sec: 1*3600 + 10*60,
-            est_weight_g: 31,
-            created_at: new Date(Date.now()-10*24*3600*1000).toISOString(),
-          },
-          {
-            id: 'm2',
-            title: 'Крепёжная клипса (партия)',
-            kind: 'gcode',
-            volume_cm3: 3.8,
-            bbox_mm: { x: 28.0, y: 18.0, z: 8.0 },
-            est_time_sec: 22*60,
-            est_weight_g: 6,
-            created_at: new Date(Date.now()-3*24*3600*1000).toISOString(),
-          },
-          {
-            id: 'm3',
-            title: 'Корпус электроники',
-            kind: 'stl',
-            volume_cm3: 312.6,
-            bbox_mm: { x: 240.0, y: 190.0, z: 120.0 },
-            est_time_sec: 13*3600 + 40*60,
-            est_weight_g: 420,
-            created_at: new Date(Date.now()-1*24*3600*1000).toISOString(),
-          }
-        ]
-      };
+    async function apiBootstrap(initData){
+      const r = await fetch(`${API_BASE}/api/bootstrap`, {
+        method: 'GET',
+        headers: initData ? { 'X-Telegram-InitData': initData } : {},
+      });
+      const txt = await r.text();
+      let data;
+      try{ data = JSON.parse(txt); } catch { data = { error: txt }; }
+      if (!r.ok) throw new Error(data?.detail || data?.error || `HTTP ${r.status}`);
+      return data;
     }
 
-    async function postJSON(url, body, timeoutMs=12000){
-      const ctrl = new AbortController();
-      const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
-      try{
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body ?? {}),
-          signal: ctrl.signal,
-        });
-        const ct = r.headers.get('content-type') || '';
-        const isJson = ct.includes('application/json');
-        const data = isJson ? await r.json() : await r.text();
-        return { ok: r.ok, status: r.status, data };
-      } finally {
-        window.clearTimeout(t);
-      }
-    }
-
-    function normalizeBootstrap(payload){
-      const out = {
-        version: safeText(payload?.version || APP_VERSION),
-        server_time: payload?.server_time || new Date().toISOString(),
-        is_admin: Boolean(payload?.is_admin),
-        subscription: payload?.subscription || { plan: 'FREE', limit_printers: 1, expires_at: null },
-        printers: Array.isArray(payload?.printers) ? payload.printers : [],
-        models: Array.isArray(payload?.models) ? payload.models : [],
-        orders: Array.isArray(payload?.orders) ? payload.orders : [],
-      };
-      // Мягкие нормализации, чтобы UI не падал от грязных данных.
-      out.printers = out.printers.map(p => ({
-        id: safeText(p?.id || crypto.randomUUID()),
-        name: safeText(p?.name || 'Принтер'),
-        model: safeText(p?.model || 'Неизвестная модель'),
-        bed_x: Number(p?.bed_x ?? 0),
-        bed_y: Number(p?.bed_y ?? 0),
-        bed_z: Number(p?.bed_z ?? 0),
-        nozzle: Number(p?.nozzle ?? 0.4),
-        status: safeText(p?.status || 'idle'),
-        status_label: safeText(p?.status_label || 'Статус'),
-        current_job: p?.current_job ? {
-          title: safeText(p.current_job.title || 'Задание'),
-          eta_sec: p.current_job.eta_sec === null || p.current_job.eta_sec === undefined ? null : Number(p.current_job.eta_sec),
-          progress: Number(p.current_job.progress ?? 0),
-        } : null,
-        updated_at: p?.updated_at || null,
-      }));
-
-      out.models = out.models.map(m => ({
-        id: safeText(m?.id || crypto.randomUUID()),
-        title: safeText(m?.title || 'Модель'),
-        kind: safeText(m?.kind || 'stl'),
-        volume_cm3: Number(m?.volume_cm3 ?? NaN),
-        bbox_mm: {
-          x: Number(m?.bbox_mm?.x ?? NaN),
-          y: Number(m?.bbox_mm?.y ?? NaN),
-          z: Number(m?.bbox_mm?.z ?? NaN),
+    async function apiAdmin(path, body, initData){
+      const r = await fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(initData ? { 'X-Telegram-InitData': initData } : {})
         },
-        est_time_sec: Number(m?.est_time_sec ?? NaN),
-        est_weight_g: Number(m?.est_weight_g ?? NaN),
-        created_at: m?.created_at || null,
-      }));
-
-      out.orders = out.orders.map(o => ({
-        id: safeText(o?.id || crypto.randomUUID()),
-        title: safeText(o?.title || 'Заказ'),
-        customer: safeText(o?.customer || ''),
-        priority: Number(o?.priority ?? 0),
-        remaining_qty: Number(o?.remaining_qty ?? 0),
-        model_ref: safeText(o?.model_ref || ''),
-        notes: safeText(o?.notes || ''),
-        created_at: o?.created_at || null,
-      }));
-
-      return out;
+        body: JSON.stringify(body || {})
+      });
+      const txt = await r.text();
+      let data;
+      try{ data = JSON.parse(txt); } catch { data = { error: txt }; }
+      if (!r.ok) throw new Error(data?.detail || data?.error || `HTTP ${r.status}`);
+      return data;
     }
 
-    async function bootstrap(){
-      // Пользователь Telegram (если доступно)
-      const tgUser = getTelegramUser();
-      if (tgUser){
-        state.user = { ...state.user, ...tgUser };
-      }
+    function normalizeFromBackend(payload){
+      const u = payload?.user_data || payload?.user || {};
+      const printers = payload?.printers_list || payload?.printers || [];
+      const models = payload?.models_list || payload?.models || [];
+      const orders = payload?.orders_list || payload?.orders || [];
 
-      const request = {
-        // В реальном backend: initData используется для проверки подписи.
-        initData: safeText(window.Telegram?.WebApp?.initData || ''),
-        client: {
-          version: APP_VERSION,
-          tz: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
-          locale: navigator.language || 'ru-RU',
-          userAgent: navigator.userAgent,
-        }
+      state.server_time = payload?.server_time || payload?.time || payload?.now || null;
+
+      state.user = {
+        id: u?.id ?? null,
+        first_name: safeText(u?.first_name || 'Пользователь'),
+        photo_url: safeText(u?.avatar_url || u?.photo_url || ''),
+        plan: safeText(u?.plan || 'FREE'),
+        limit_printers: Number(u?.limit_printers ?? payload?.subscription?.limit_printers ?? 1),
+        is_admin: Boolean(u?.is_admin),
+        is_banned: Boolean(u?.is_banned)
       };
 
-      if (!USE_MOCK){
-        try{
-          const res = await postJSON(`${API_BASE}/api/bootstrap`, request);
-          if (res.ok && res.data && typeof res.data === 'object'){
-            const norm = normalizeBootstrap(res.data);
-            state.isDemo = false;
-            state.isAdmin = Boolean(norm.is_admin);
-            state.subscription = norm.subscription;
-            state.printers = norm.printers;
-            state.models = norm.models;
-            state.orders = norm.orders;
-            state.bootstrapped = true;
-            $('#banner')?.classList.add('hidden');
-            return;
-          }
-          // Если backend ответил ошибкой/не JSON — включаем безопасный fallback.
-          console.warn('Bootstrap failed:', res.status, res.data);
-        } catch (e){
-          console.warn('Bootstrap exception:', e);
-        }
-      }
-
-      const demo = normalizeBootstrap(demoData());
-      state.isDemo = true;
-      state.isAdmin = Boolean(demo.is_admin);
-      state.subscription = demo.subscription;
-      state.printers = demo.printers;
-      state.models = demo.models;
-      state.orders = demo.orders;
-      state.bootstrapped = true;
-      $('#banner')?.classList.remove('hidden');
-    }
-
-    function bedArea(p){
-      const x = Number(p?.bed_x);
-      const y = Number(p?.bed_y);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return NaN;
-      return x * y;
+      state.printers = Array.isArray(printers) ? printers : [];
+      state.models = Array.isArray(models) ? models : [];
+      state.orders = Array.isArray(orders) ? orders : [];
     }
 
     function matchesSearch(text, q){
-      if (!q) return true;
-      const t = safeText(text).toLowerCase();
       const qq = safeText(q).trim().toLowerCase();
       if (!qq) return true;
-      return t.includes(qq);
+      return safeText(text).toLowerCase().includes(qq);
+    }
+
+    function statusPill(status){
+      const s = safeText(status).toLowerCase();
+      if (s === 'printing') return `<span class="pf-pill pf-pill--info">Печатает</span>`;
+      if (s === 'idle') return `<span class="pf-pill pf-pill--good">Свободен</span>`;
+      if (s === 'paused') return `<span class="pf-pill pf-pill--warn">Пауза</span>`;
+      if (s === 'repair') return `<span class="pf-pill pf-pill--warn">Ремонт</span>`;
+      if (s === 'error') return `<span class="pf-pill pf-pill--bad">Ошибка</span>`;
+      return `<span class="pf-pill pf-pill--info">${escapeHtml(status || 'status')}</span>`;
     }
 
     function filterPrinters(list){
       const q = state.ui.search;
-      const size = state.ui.filters.printer_size;
-
-      let out = list.filter(p => {
-        const blob = `${p.name} ${p.model} ${p.status_label}`;
-        return matchesSearch(blob, q);
-      });
-
-      // Размер по площади стола.
-      if (size !== 'all'){
-        out = out.filter(p => {
-          const a = bedArea(p);
-          if (!Number.isFinite(a)) return false;
-          // Эвристика: small <= 52k, big 52k-100k, xl > 100k
-          if (size === 'small') return a <= 52000;
-          if (size === 'big') return a > 52000 && a <= 100000;
-          if (size === 'xl') return a > 100000;
+      const f = state.ui.filters.printer_state;
+      return list
+        .filter(p => matchesSearch(`${p.name} ${p.model_name} ${p.status}`, q))
+        .filter(p => {
+          if (f === 'all') return true;
+          if (f === 'printing') return safeText(p.status).toLowerCase() === 'printing';
+          if (f === 'idle') return safeText(p.status).toLowerCase() === 'idle';
+          if (f === 'problem') {
+            const st = safeText(p.status).toLowerCase();
+            return st === 'paused' || st === 'error' || st === 'repair';
+          }
           return true;
-        });
-      }
-
-      // Стабильная сортировка: печатающие выше, затем свободные, затем ошибки.
-      const rank = (s) => {
-        if (s === 'printing') return 0;
-        if (s === 'idle') return 1;
-        if (s === 'paused') return 2;
-        if (s === 'error') return 3;
-        return 9;
-      };
-      out = out.slice().sort((a,b) => {
-        const ra = rank(a.status);
-        const rb = rank(b.status);
-        if (ra !== rb) return ra - rb;
-        return safeText(a.name).localeCompare(safeText(b.name), 'ru');
-      });
-
-      return out;
+        })
+        .slice()
+        .sort((a,b) => safeText(a.name).localeCompare(safeText(b.name), 'ru'));
     }
 
     function sortModels(list){
       const q = state.ui.search;
       const sort = state.ui.filters.model_sort;
-
-      let out = list.filter(m => {
-        const blob = `${m.title} ${m.kind}`;
-        return matchesSearch(blob, q);
-      });
-
+      let out = list.filter(m => matchesSearch(`${m.filename} ${m.kind}`, q));
       out = out.slice().sort((a,b) => {
-        const av = Number(a.volume_cm3);
-        const bv = Number(b.volume_cm3);
-        const aOk = Number.isFinite(av);
-        const bOk = Number.isFinite(bv);
-        if (aOk !== bOk) return aOk ? -1 : 1; // известные объёмы выше
-        if (!aOk && !bOk) return safeText(a.title).localeCompare(safeText(b.title), 'ru');
-        if (sort === 'volume_asc') return av - bv;
-        return bv - av;
+        if (sort === 'volume_desc') return Number(b.volume_cm3||0) - Number(a.volume_cm3||0);
+        return new Date(b.created_at||0).getTime() - new Date(a.created_at||0).getTime();
       });
-
       return out;
     }
 
     function filterOrders(list){
       const q = state.ui.search;
-      let out = list.filter(o => {
-        const blob = `${o.title} ${o.customer} ${o.notes}`;
-        return matchesSearch(blob, q);
-      });
-      // Приоритет выше — раньше. Если одинаково, свежие выше.
-      out = out.slice().sort((a,b) => {
-        const ap = Number(a.priority);
-        const bp = Number(b.priority);
-        if (ap !== bp) return bp - ap;
-        const at = new Date(a.created_at || 0).getTime();
-        const bt = new Date(b.created_at || 0).getTime();
-        return bt - at;
-      });
-      return out;
-    }
-
-    function statusPill(status){
-      const s = safeText(status);
-      if (s === 'printing') return 'pf-pill pf-pill--info';
-      if (s === 'idle') return 'pf-pill pf-pill--good';
-      if (s === 'paused') return 'pf-pill pf-pill--warn';
-      if (s === 'error') return 'pf-pill pf-pill--bad';
-      return 'pf-pill pf-pill--info';
-    }
-
-    function escapeHtml(str){
-      return safeText(str)
-        .replaceAll('&','&amp;')
-        .replaceAll('<','&lt;')
-        .replaceAll('>','&gt;')
-        .replaceAll('"','&quot;')
-        .replaceAll("'", '&#039;');
+      return list
+        .filter(o => matchesSearch(`${o.id} ${o.status} ${o.title} ${o.note} ${o.catalog_title}`, q))
+        .slice()
+        .sort((a,b) => new Date(b.created_at||0).getTime() - new Date(a.created_at||0).getTime());
     }
 
     function renderPrinters(){
       const root = $('#tab-printers');
+      const u = state.user;
       const printers = filterPrinters(state.printers);
 
-      const sub = state.subscription || { plan: 'FREE' };
-      const limit = sub.limit_printers;
-      const limLabel = limit === Infinity ? '∞' : safeText(limit);
-      const plan = safeText(sub.plan || 'FREE');
-
-      let header = `
+      const header = `
         <div class="pf-card p-4">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="text-base font-semibold">Принтеры</div>
-              <div class="text-xs" style="color: var(--pf-sub);">План: <span class="font-semibold">${escapeHtml(plan)}</span> · Лимит: <span class="font-semibold">${escapeHtml(limLabel)}</span> · Сервер: <span class="font-semibold">${escapeHtml(fmtDateTime(state.server_time || null))}</span></div>
+              <div class="text-xs" style="color: var(--pf-sub);">Пользователь: <span class="font-semibold">${escapeHtml(u.first_name || '—')}</span> · План: <span class="font-semibold">${escapeHtml(u.plan || 'FREE')}</span></div>
+              <div class="text-[11px] mt-1" style="color: var(--pf-sub);">Сервер: <span class="font-semibold">${escapeHtml(fmtDateTime(state.server_time))}</span></div>
             </div>
             <div class="flex items-center gap-2">
-              ${state.isDemo ? `<span class="pf-badge">ДЕМО</span>` : ''}
-              <button class="px-3 py-2 rounded-xl" style="background: rgba(0,0,0,.04);" id="addPrinterBtn" title="Добавить принтер">+ Добавить</button>
+              <span class="pf-badge">${state.apiOk ? 'API OK' : 'API OFF'}</span>
+              ${u.is_admin ? '<span class="pf-badge" style="background: rgba(255,59,48,.12); border-color: rgba(255,59,48,.22); color:#a61a12;">ADMIN</span>' : ''}
             </div>
           </div>
         </div>
       `;
 
-      let body = '';
-      if (printers.length === 0){
-        body = `
-          <div class="pf-card p-4">
-            <div class="text-sm font-semibold">Ничего не найдено</div>
-            <div class="text-xs text-gray-500 mt-1">Проверьте фильтры и строку поиска.</div>
-          </div>
-        `;
-      } else {
-        body = printers.map(p => {
-          const area = bedArea(p);
-          const areaText = Number.isFinite(area) ? `${Math.round(area)} мм²` : '—';
-          const job = p.current_job;
-          const progress = job && Number.isFinite(job.progress) ? Math.max(0, Math.min(1, job.progress)) : null;
-          const progressPct = progress === null ? null : Math.round(progress*100);
-
-          return `
-            <article class="pf-card p-4" data-printer-id="${escapeHtml(p.id)}">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <div class="text-base font-semibold truncate">${escapeHtml(p.name)}</div>
-                    <span class="${statusPill(p.status)}">${escapeHtml(p.status_label)}</span>
-                  </div>
-                  <div class="text-xs mt-1" style="color: var(--pf-sub);">
-                    ${escapeHtml(p.model)} · Сопло: <span class="font-semibold">${escapeHtml(p.nozzle)}</span> · Стол: <span class="font-semibold">${escapeHtml(fmtMm(p.bed_x))}</span> × <span class="font-semibold">${escapeHtml(fmtMm(p.bed_y))}</span> · Z: <span class="font-semibold">${escapeHtml(fmtMm(p.bed_z))}</span>
-                  </div>
-                </div>
-                <button class="px-3 py-2 rounded-xl hover:bg-black/5" data-action="printer_menu">Меню</button>
+      const cards = printers.length ? printers.map(p => {
+        const cur = p.current || null;
+        const title = cur?.title || cur?.catalog_title || (cur?.catalog_id ? ('#'+cur.catalog_id) : '—');
+        const dur = cur?.duration_sec || cur?.estimated_sec || null;
+        const st = safeText(p.status).toLowerCase();
+        let progressPct = null;
+        if (st === 'printing' && cur?.last_start && dur){
+          const t0 = new Date(cur.last_start.replace(' ', 'T')).getTime();
+          const now = Date.now();
+          if (!Number.isNaN(t0)){
+            const elapsed = Math.max(0, (now - t0)/1000);
+            progressPct = Math.max(0, Math.min(100, Math.round((elapsed / Number(dur)) * 100)));
+          }
+        }
+        return `
+          <article class="pf-card p-4">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-semibold truncate">${escapeHtml(p.name || 'Принтер')}</div>
+                <div class="text-xs mt-1" style="color: var(--pf-sub);">Модель: ${escapeHtml(p.model_name || '—')} · Стол: <span class="font-semibold">${escapeHtml(p.bed_x||0)}×${escapeHtml(p.bed_y||0)}×${escapeHtml(p.bed_z||0)}</span> мм</div>
               </div>
+              ${statusPill(p.status)}
+            </div>
 
-              ${job ? `
-                <div class="mt-3 pf-divider"></div>
-                <div class="mt-3">
-                  <div class="text-sm font-semibold truncate">${escapeHtml(job.title)}</div>
-                  <div class="mt-1 text-xs" style="color: var(--pf-sub);">Осталось: <span class="font-semibold">${escapeHtml(job.eta_sec === null ? '—' : fmtHours(job.eta_sec))}</span> · Прогресс: <span class="font-semibold">${escapeHtml(progressPct === null ? '—' : progressPct + '%')}</span> · Обновлено: <span class="font-semibold">${escapeHtml(fmtDateTime(p.updated_at))}</span></div>
+            ${cur ? `
+              <div class="mt-3 pf-divider"></div>
+              <div class="mt-3">
+                <div class="text-sm font-semibold truncate">${escapeHtml(title)}</div>
+                <div class="mt-1 text-xs" style="color: var(--pf-sub);">Длительность: <span class="font-semibold">${escapeHtml(dur ? fmtSeconds(dur) : '—')}</span> · Старт: <span class="font-semibold">${escapeHtml(cur.last_start || '—')}</span></div>
+                ${progressPct !== null ? `
                   <div class="mt-2 h-2 rounded-full" style="background: rgba(0,0,0,.06);">
-                    <div class="h-2 rounded-full" style="width: ${progressPct ?? 0}%; background: linear-gradient(90deg, rgba(47,107,255,.85), rgba(6,182,212,.85));"></div>
+                    <div class="h-2 rounded-full" style="width:${progressPct}%; background: linear-gradient(90deg, rgba(47,107,255,.85), rgba(6,182,212,.85));"></div>
                   </div>
-                </div>
-              ` : `
-                <div class="mt-3 flex items-center justify-between">
-                  <div class="text-xs" style="color: var(--pf-sub);">Площадь стола: <span class="font-semibold">${escapeHtml(areaText)}</span> · Обновлено: <span class="font-semibold">${escapeHtml(fmtDateTime(p.updated_at))}</span></div>
-                  <button class="px-3 py-2 rounded-xl" style="background: rgba(47,107,255,.08); border: 1px solid rgba(47,107,255,.22); color: #1d46aa;" data-action="start_job">Печать</button>
-                </div>
-              `}
-            </article>
-          `;
-        }).join('');
-      }
-
-      root.innerHTML = `
-        <div class="space-y-3">
-          ${header}
-          ${body}
+                  <div class="mt-1 text-[11px]" style="color: var(--pf-sub);">Прогресс: <span class="font-semibold">${progressPct}%</span></div>
+                ` : ''}
+              </div>
+            ` : `
+              <div class="mt-3 text-xs" style="color: var(--pf-sub);">Сейчас ничего не печатается.</div>
+            `}
+          </article>
+        `;
+      }).join('') : `
+        <div class="pf-card p-4">
+          <div class="text-sm font-semibold">Нет принтеров</div>
+          <div class="text-xs text-gray-500 mt-1">Если это неожиданно — проверьте данные в /api/bootstrap.</div>
         </div>
       `;
 
-      // Actions
-      $('#addPrinterBtn')?.addEventListener('click', () => {
-        const plan = safeText(state.subscription?.plan || 'FREE');
-        toast(`Добавление принтера: в демо-режиме недоступно. План: ${plan}.`);
-      });
-
-      $$('[data-action="printer_menu"]', root).forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const card = e.target.closest('[data-printer-id]');
-          const id = card?.getAttribute('data-printer-id');
-          const printer = state.printers.find(p => p.id === id);
-          if (!printer){ toast('Не удалось определить принтер.'); return; }
-          toast(`Меню принтера: ${printer.name}. (В реальном проекте: карточка/команды/премиум-рендер.)`);
-        });
-      });
-
-      $$('[data-action="start_job"]', root).forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const card = e.target.closest('[data-printer-id]');
-          const id = card?.getAttribute('data-printer-id');
-          const printer = state.printers.find(p => p.id === id);
-          if (!printer){ toast('Не удалось определить принтер.'); return; }
-          toast(`Печать: в демо UI показан запуск задания для «${printer.name}».`);
-        });
-      });
+      root.innerHTML = `<div class="space-y-3">${header}${cards}</div>`;
     }
 
     function renderWork(){
@@ -944,289 +497,149 @@
       const models = sortModels(state.models);
       const ordersFirst = Boolean(state.ui.filters.ordersFirst);
 
-      const orderCards = orders.map(o => {
-        const model = state.models.find(m => m.id === o.model_ref);
-        const modelTitle = model ? model.title : (o.model_ref ? `Модель: ${o.model_ref}` : 'Модель не указана');
-        const rem = Number.isFinite(o.remaining_qty) ? o.remaining_qty : 0;
-        const urgent = o.priority >= 8;
-
+      const ordersHtml = orders.length ? orders.map(o => {
+        const st = safeText(o.status || 'open').toLowerCase();
+        const badge = st === 'done' ? 'pf-pill--good' : 'pf-pill--info';
         return `
-          <article class="pf-card p-4" data-order-id="${escapeHtml(o.id)}">
-            <div class="flex items-start justify-between gap-3">
+          <article class="pf-card p-4">
+            <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <div class="text-base font-semibold truncate">${escapeHtml(o.title)}</div>
-                  ${urgent ? `<span class="pf-pill pf-pill--bad">СРОЧНО</span>` : `<span class="pf-pill pf-pill--info">Приоритет ${escapeHtml(o.priority)}</span>`}
-                </div>
-                <div class="text-xs mt-1" style="color: var(--pf-sub);">
-                  Клиент: <span class="font-semibold">${escapeHtml(o.customer || '—')}</span> · Остаток: <span class="font-semibold">${escapeHtml(rem)}</span> · Создан: <span class="font-semibold">${escapeHtml(fmtDateTime(o.created_at))}</span>
-                </div>
+                <div class="font-semibold">Заказ #${escapeHtml(o.id)}</div>
+                <div class="text-xs mt-1" style="color: var(--pf-sub);">Модель: <span class="font-semibold">${escapeHtml(o.catalog_title || o.title || '—')}</span></div>
               </div>
-              <button class="px-3 py-2 rounded-xl hover:bg-black/5" data-action="order_menu">Меню</button>
+              <span class="pf-pill ${badge}">${escapeHtml(st.toUpperCase())}</span>
             </div>
-
-            <div class="mt-3 pf-divider"></div>
-            <div class="mt-3">
-              <div class="text-sm font-semibold">${escapeHtml(modelTitle)}</div>
-              ${o.notes ? `<div class="mt-1 text-xs" style="color: var(--pf-sub);">Примечание: ${escapeHtml(o.notes)}</div>` : `<div class="mt-1 text-xs" style="color: var(--pf-sub);">Без примечаний.</div>`}
-              <div class="mt-3 flex gap-2">
-                <button class="flex-1 px-3 py-2 rounded-xl" style="background: rgba(47,107,255,.08); border: 1px solid rgba(47,107,255,.22); color: #1d46aa;" data-action="order_start">Запустить печать</button>
-                <button class="px-3 py-2 rounded-xl" style="background: rgba(0,0,0,.04);" data-action="order_decrement">−1 остаток</button>
-              </div>
-              <div class="mt-2 text-[11px]" style="color: var(--pf-sub);">Логика v2.6.7: при финише печати остаток должен декрементироваться автоматически.</div>
+            <div class="mt-2 text-xs" style="color: var(--pf-sub);">
+              <div class="flex items-center justify-between"><span>Создан</span><span class="font-semibold">${escapeHtml(fmtDateTime(o.created_at))}</span></div>
+              <div class="flex items-center justify-between"><span>Готово</span><span class="font-semibold">${escapeHtml(o.done_qty ?? '—')}/${escapeHtml(o.total_qty ?? '—')}</span></div>
             </div>
           </article>
         `;
-      }).join('');
+      }).join('') : `<div class="pf-card p-4"><div class="text-sm text-gray-500">Пока нет заказов.</div></div>`;
 
-      const modelCards = models.map(m => {
-        const bbox = m.bbox_mm || {};
+      const modelsHtml = models.length ? models.map(m => {
         return `
-          <article class="pf-card p-4" data-model-id="${escapeHtml(m.id)}">
-            <div class="flex items-start justify-between gap-3">
+          <article class="pf-card p-4">
+            <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <div class="text-base font-semibold truncate">${escapeHtml(m.title)}</div>
-                  <span class="pf-pill pf-pill--info">${escapeHtml((m.kind || 'stl').toUpperCase())}</span>
-                </div>
-                <div class="text-xs mt-1" style="color: var(--pf-sub);">
-                  Объём: <span class="font-semibold">${escapeHtml(fmtCm3(m.volume_cm3))}</span> · Габариты: <span class="font-semibold">${escapeHtml(fmtMm(bbox.x))}</span> × <span class="font-semibold">${escapeHtml(fmtMm(bbox.y))}</span> × <span class="font-semibold">${escapeHtml(fmtMm(bbox.z))}</span>
-                </div>
+                <div class="font-semibold truncate">${escapeHtml(m.filename || ('Модель #'+m.id))}</div>
+                <div class="text-xs mt-1" style="color: var(--pf-sub);">Тип: ${escapeHtml(String(m.kind||'').toUpperCase())} · Размер: <span class="font-semibold">${escapeHtml(m.size_x||0)}×${escapeHtml(m.size_y||0)}×${escapeHtml(m.size_z||0)}</span> мм</div>
               </div>
-              <button class="px-3 py-2 rounded-xl hover:bg-black/5" data-action="model_menu">Меню</button>
+              <span class="pf-pill pf-pill--info">${escapeHtml(String(m.kind||'file').toUpperCase())}</span>
             </div>
-
-            <div class="mt-3 pf-divider"></div>
-            <div class="mt-3 flex items-center justify-between gap-3">
-              <div class="text-xs" style="color: var(--pf-sub);">
-                Время: <span class="font-semibold">${escapeHtml(fmtHours(m.est_time_sec))}</span> · Вес: <span class="font-semibold">${escapeHtml(Number.isFinite(m.est_weight_g) ? m.est_weight_g + ' г' : '—')}</span>
-              </div>
-              <button class="px-3 py-2 rounded-xl" style="background: rgba(0,0,0,.04);" data-action="anti_vermicelli">Анти‑Вермишель</button>
+            <div class="mt-2 text-xs" style="color: var(--pf-sub);">
+              <div class="flex items-center justify-between"><span>Объём</span><span class="font-semibold">${escapeHtml(m.volume_cm3 ?? '—')} см³</span></div>
+              <div class="flex items-center justify-between"><span>Время</span><span class="font-semibold">${escapeHtml(m.estimated_sec ? fmtSeconds(m.estimated_sec) : '—')}</span></div>
+              <div class="flex items-center justify-between"><span>Филамент</span><span class="font-semibold">${escapeHtml(m.filament_mm ?? '—')} мм</span></div>
             </div>
           </article>
         `;
-      }).join('');
+      }).join('') : `<div class="pf-card p-4"><div class="text-sm text-gray-500">Нет загруженных моделей.</div></div>`;
 
-      const block = (title, content, hint) => `
+      const block = (title, hint, content) => `
         <div class="pf-card p-4">
           <div class="flex items-center justify-between">
             <div class="text-base font-semibold">${escapeHtml(title)}</div>
-            ${hint ? `<div class="text-xs" style="color: var(--pf-sub);">${escapeHtml(hint)}</div>` : ''}
+            <div class="text-xs" style="color: var(--pf-sub);">${escapeHtml(hint||'')}</div>
           </div>
         </div>
-        <div class="space-y-3">${content || `
-          <div class="pf-card p-4">
-            <div class="text-sm font-semibold">Пусто</div>
-            <div class="text-xs text-gray-500 mt-1">Данных пока нет.</div>
-          </div>
-        `}</div>
+        <div class="space-y-3">${content}</div>
       `;
 
-      const combined = ordersFirst
-        ? `${block('Заказы', orderCards, 'Заказы всегда выше моделей')}${block('Модели', modelCards, 'Сортировка по объёму')}`
-        : `${block('Модели', modelCards, 'Сортировка по объёму')}${block('Заказы', orderCards, 'Заказы могут быть ниже моделей')}`;
-
-      root.innerHTML = `
-        <div class="space-y-3">${combined}</div>
-      `;
-
-      // Actions
-      $$('[data-action="order_menu"]', root).forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const card = e.target.closest('[data-order-id]');
-          const id = card?.getAttribute('data-order-id');
-          const order = state.orders.find(o => o.id === id);
-          if (!order){ toast('Не удалось определить заказ.'); return; }
-          toast(`Меню заказа: ${order.title}. (В реальном проекте: редактирование/привязка к моделям/планирование.)`);
-        });
-      });
-
-      $$('[data-action="order_decrement"]', root).forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const card = e.target.closest('[data-order-id]');
-          const id = card?.getAttribute('data-order-id');
-          const order = state.orders.find(o => o.id === id);
-          if (!order){ toast('Не удалось определить заказ.'); return; }
-          if (!Number.isFinite(order.remaining_qty)) order.remaining_qty = 0;
-          if (order.remaining_qty <= 0){ toast('Остаток уже равен 0.'); return; }
-          order.remaining_qty -= 1;
-          toast(`Остаток «${order.title}»: теперь ${order.remaining_qty}.`);
-          renderWork();
-        });
-      });
-
-      $$('[data-action="order_start"]', root).forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const card = e.target.closest('[data-order-id]');
-          const id = card?.getAttribute('data-order-id');
-          const order = state.orders.find(o => o.id === id);
-          if (!order){ toast('Не удалось определить заказ.'); return; }
-          toast(`Запуск печати заказа «${order.title}»: в демо UI это действие не отправляет команду на backend.`);
-        });
-      });
-
-      $$('[data-action="model_menu"]', root).forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const card = e.target.closest('[data-model-id]');
-          const id = card?.getAttribute('data-model-id');
-          const model = state.models.find(m => m.id === id);
-          if (!model){ toast('Не удалось определить модель.'); return; }
-          toast(`Меню модели: ${model.title}. (В реальном проекте: загрузчик G-code+STL, метрики слайсера, предпросмотр.)`);
-        });
-      });
-
-      $$('[data-action="anti_vermicelli"]', root).forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const card = e.target.closest('[data-model-id]');
-          const id = card?.getAttribute('data-model-id');
-          const model = state.models.find(m => m.id === id);
-          if (!model){ toast('Не удалось определить модель.'); return; }
-
-          // Анти-Вермишель: проверка на влезание в самый маленький принтер из списка.
-          // В реальной системе выбор принтера задаётся явно.
-          const printers = state.printers.slice().sort((a,b) => bedArea(a) - bedArea(b));
-          const p = printers[0];
-          if (!p){ toast('Нет принтеров для проверки.'); return; }
-
-          const bx = Number(model.bbox_mm?.x);
-          const by = Number(model.bbox_mm?.y);
-          const bz = Number(model.bbox_mm?.z);
-          if (![bx,by,bz].every(Number.isFinite)){
-            toast('Недостаточно данных для проверки габаритов модели.');
-            return;
-          }
-
-          const ex = bx - Number(p.bed_x);
-          const ey = by - Number(p.bed_y);
-          const ez = bz - Number(p.bed_z);
-
-          if (ex <= 0 && ey <= 0 && ez <= 0){
-            toast(`Анти‑Вермишель: модель «${model.title}» помещается на «${p.name}».`);
-            return;
-          }
-
-          const parts = [];
-          if (ex > 0) parts.push(`X превышение на ${Math.round(ex*10)/10} мм`);
-          if (ey > 0) parts.push(`Y превышение на ${Math.round(ey*10)/10} мм`);
-          if (ez > 0) parts.push(`Z превышение на ${Math.round(ez*10)/10} мм`);
-          toast(`Анти‑Вермишель: модель не помещается на «${p.name}»: ${parts.join('; ')}.` , { ms: 5200 });
-        });
-      });
-    }
-
-    function settingRow({title, subtitle, iconSvg, bg}){
-      const bgStyle = `background: ${bg};`;
-      return `
-        <button class="w-full pf-card px-3 py-3 flex items-center gap-3 text-left hover:bg-black/5" style="box-shadow:none; background: transparent;" data-action="setting">
-          <div class="pf-setting-icon" style="${bgStyle}">${iconSvg}</div>
-          <div class="min-w-0 flex-1">
-            <div class="text-sm font-semibold truncate">${escapeHtml(title)}</div>
-            ${subtitle ? `<div class="text-xs" style="color: var(--pf-sub);">${escapeHtml(subtitle)}</div>` : ''}
-          </div>
-          <div class="text-gray-400">
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M9 18 15 12 9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-        </button>
-      `;
+      root.innerHTML = `<div class="space-y-3">${ordersFirst ? (block('Заказы','Новая таблица orders',ordersHtml)+block('Модели','STL / G‑CODE',modelsHtml)) : (block('Модели','STL / G‑CODE',modelsHtml)+block('Заказы','Новая таблица orders',ordersHtml))}</div>`;
     }
 
     function renderProfile(){
       const root = $('#tab-profile');
       const u = state.user;
-      const fullName = `${safeText(u.first_name)} ${safeText(u.last_name)}`.trim() || 'Пользователь';
-      const username = u.username ? '@' + u.username : '—';
+      const initData = getTgInitData();
 
       const avatar = u.photo_url
         ? `<img src="${escapeHtml(u.photo_url)}" alt="Аватар" class="h-16 w-16 rounded-full object-cover" />`
-        : `<div class="h-16 w-16 rounded-full" style="background: linear-gradient(135deg, rgba(47,107,255,.25), rgba(124,58,237,.25)); display:grid; place-items:center;">
-             <div class="text-xl font-bold" style="color: rgba(17,24,39,.7);">${escapeHtml(fullName.slice(0,1).toUpperCase())}</div>
-           </div>`;
+        : `<div class="h-16 w-16 rounded-full" style="background: linear-gradient(135deg, rgba(47,107,255,.25), rgba(124,58,237,.25)); display:grid; place-items:center;"><div class="text-xl font-bold" style="color: rgba(17,24,39,.7);">PF</div></div>`;
 
-      const plan = safeText(state.subscription?.plan || 'FREE');
-      const lim = state.subscription?.limit_printers;
-      const limLabel = lim === Infinity ? '∞' : safeText(lim);
+      const printersUsed = state.printers.length;
+      const printersLimit = Math.max(1, Number(u.limit_printers || 1));
+      const printersPct = Math.max(0, Math.min(100, Math.round((printersUsed / printersLimit) * 100)));
 
-      const commonSettings = [
-        {
-          title: 'Подписка',
-          subtitle: `Ваш план: ${plan} · лимит принтеров: ${limLabel}`,
-          bg: 'linear-gradient(135deg, rgba(47,107,255,.18), rgba(6,182,212,.16))',
-          iconSvg: `
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#1d46aa">
-              <path d="M12 2 20 6v6c0 5-3.5 9.4-8 10-4.5-.6-8-5-8-10V6l8-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-              <path d="M9 12l2 2 4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          `
-        },
-        {
-          title: 'Загрузчик STL / G-code',
-          subtitle: 'Единый загрузчик: время/вес из комментариев слайсера',
-          bg: 'linear-gradient(135deg, rgba(124,58,237,.18), rgba(47,107,255,.14))',
-          iconSvg: `
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#5b21b6">
-              <path d="M12 3v10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path d="M8 9l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          `
-        },
-        {
-          title: 'Анти‑Вермишель',
-          subtitle: 'Проверка влезания модели в bed X/Y/Z с детальным отчётом',
-          bg: 'linear-gradient(135deg, rgba(255,179,0,.18), rgba(255,59,48,.10))',
-          iconSvg: `
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#8a5a00">
-              <path d="M12 2a10 10 0 1 0 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path d="M12 7v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M21 2v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          `
-        },
-        {
-          title: 'Уведомления',
-          subtitle: 'Безопасные ответы и редактирование сообщений (safe_* helpers)',
-          bg: 'linear-gradient(135deg, rgba(0,200,83,.16), rgba(6,182,212,.12))',
-          iconSvg: `
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#067a34">
-              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          `
-        },
-      ];
+      const modelsUsed = state.models.length;
+      const modelsLimit = Math.max(modelsUsed, Number(u.limit_models || 0) || 0) || modelsUsed || 1;
+      const modelsPct = modelsLimit ? Math.max(0, Math.min(100, Math.round((modelsUsed / modelsLimit) * 100))) : 0;
 
-      const adminSettings = [
-        {
-          title: 'Админ‑панель',
-          subtitle: 'Пользователи, подписки, промокоды, база моделей принтеров',
-          bg: 'linear-gradient(135deg, rgba(255,59,48,.16), rgba(124,58,237,.12))',
-          iconSvg: `
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#a61a12">
-              <path d="M12 1 3 5v6c0 5.5 3.8 10.3 9 12 5.2-1.7 9-6.5 9-12V5l-9-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-              <path d="M12 10a2 2 0 0 1 2 2v3H10v-3a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2"/>
-              <path d="M10.5 10V8.75a1.5 1.5 0 1 1 3 0V10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          `
-        },
-      ];
-
-      const settingsHtml = commonSettings.map(settingRow).join('');
-      const adminHtml = state.isAdmin
-        ? `
-          <div class="mt-3 pf-card p-4">
+      const quotaBar = (label, used, limit, pct, tone='info') => {
+        const fill = tone === 'good'
+          ? 'linear-gradient(90deg, rgba(0,200,83,.85), rgba(6,182,212,.65))'
+          : 'linear-gradient(90deg, rgba(47,107,255,.85), rgba(6,182,212,.75))';
+        return `
+          <div class="pf-card p-3" style="box-shadow:none; border: 1px solid rgba(0,0,0,.06); background: rgba(0,0,0,.02);">
             <div class="flex items-center justify-between">
-              <div class="text-base font-semibold">Админ‑панель</div>
-              <span class="pf-badge">ADMIN</span>
+              <div class="text-xs font-semibold" style="color: var(--pf-sub);">${escapeHtml(label)}</div>
+              <div class="text-xs font-semibold">${escapeHtml(used)}/${escapeHtml(limit)}</div>
             </div>
-            <div class="text-xs mt-1" style="color: var(--pf-sub);">Раздел виден только администраторам.</div>
+            <div class="mt-2 h-2 rounded-full" style="background: rgba(0,0,0,.06);">
+              <div class="h-2 rounded-full" style="width:${pct}%; background: ${fill};"></div>
+            </div>
           </div>
-          <div class="pf-card p-2" style="box-shadow: var(--pf-shadow);">
-            ${adminSettings.map(settingRow).join('')}
+        `;
+      };
+
+      const adminPanel = u.is_admin ? `
+        <div class="pf-card p-4">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold">Админ‑панель</div>
+            <span class="pf-badge" style="background: rgba(255,59,48,.12); border-color: rgba(255,59,48,.22); color:#a61a12;">ADMIN</span>
           </div>
-        `
-        : '';
+          <div class="mt-2 text-xs" style="color: var(--pf-sub);">Создание промокодов, выдача/снятие подписок, бан/разбан пользователей.</div>
+
+          <div class="mt-3 grid gap-3">
+            <div class="pf-card p-3" style="box-shadow:none; border: 1px solid rgba(0,0,0,.06);">
+              <div class="text-xs font-semibold" style="color: var(--pf-sub);">Промокоды</div>
+              <div class="mt-2 grid grid-cols-2 gap-2">
+                <input id="adminPromoCode" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Код (например PRINTFARM-2026)" />
+                <select id="adminPromoPlan" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs">
+                  <option value="FREE">FREE</option>
+                  <option value="PRO">PRO</option>
+                  <option value="STUDIO">STUDIO</option>
+                </select>
+                <input id="adminPromoLimit" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Лимит принтеров" value="1" />
+                <input id="adminPromoDays" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Дней (пусто = бессрочно)" />
+              </div>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <label class="text-xs" style="color: var(--pf-sub);">
+                  <input id="adminPromoSingle" type="checkbox" class="align-middle mr-2" checked />
+                  Одноразовый
+                </label>
+                <button id="adminCreatePromo" class="px-3 py-2 rounded-xl text-xs font-semibold" style="border: 1px solid rgba(47,107,255,.22); background: rgba(47,107,255,.08); color: #1d46aa;">Создать</button>
+              </div>
+            </div>
+
+            <div class="pf-card p-3" style="box-shadow:none; border: 1px solid rgba(0,0,0,.06);">
+              <div class="text-xs font-semibold" style="color: var(--pf-sub);">Пользователь</div>
+              <div class="mt-2 grid grid-cols-2 gap-2">
+                <input id="adminUserId" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="User ID" />
+                <select id="adminUserPlan" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs">
+                  <option value="FREE">FREE</option>
+                  <option value="PRO">PRO</option>
+                  <option value="STUDIO">STUDIO</option>
+                </select>
+                <input id="adminUserLimit" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Лимит принтеров" value="1" />
+                <input id="adminUserDays" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Дней (пусто = снять дату)" />
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button id="adminSetSub" class="flex-1 px-3 py-2 rounded-xl text-xs font-semibold" style="border: 1px solid rgba(47,107,255,.22); background: rgba(47,107,255,.08); color: #1d46aa;">Выдать/обновить подписку</button>
+                <button id="adminBan" class="px-3 py-2 rounded-xl text-xs font-semibold" style="border: 1px solid rgba(255,59,48,.22); background: rgba(255,59,48,.10); color:#a61a12;">Бан</button>
+                <button id="adminUnban" class="px-3 py-2 rounded-xl text-xs font-semibold" style="border: 1px solid rgba(0,200,83,.22); background: rgba(0,200,83,.10); color:#067a34;">Разбан</button>
+              </div>
+              <div class="mt-2 text-[11px]" style="color: var(--pf-sub);">Требуются backend‑эндпоинты: <code class="px-1 py-[1px] rounded bg-black/5">POST /api/admin/promo/create</code>, <code class="px-1 py-[1px] rounded bg-black/5">POST /api/admin/user/subscription</code>, <code class="px-1 py-[1px] rounded bg-black/5">POST /api/admin/user/ban</code>.</div>
+            </div>
+
+            <div class="pf-card p-3" style="box-shadow:none; border: 1px solid rgba(0,0,0,.06);">
+              <div class="text-xs font-semibold" style="color: var(--pf-sub);">Последний результат</div>
+              <div class="mt-2 text-xs" style="color: var(--pf-sub);">${escapeHtml(state.admin.lastResult || '—')}</div>
+            </div>
+          </div>
+        </div>
+      ` : '';
 
       root.innerHTML = `
         <div class="space-y-3">
@@ -1234,79 +647,117 @@
             <div class="flex items-center gap-3">
               ${avatar}
               <div class="min-w-0">
-                <div class="text-base font-semibold truncate">${escapeHtml(fullName)}</div>
-                <div class="text-xs" style="color: var(--pf-sub);">${escapeHtml(username)} · ID: <span class="font-semibold">${escapeHtml(u.id ?? '—')}</span></div>
+                <div class="text-base font-semibold truncate">${escapeHtml(u.first_name || 'Пользователь')}</div>
+                <div class="text-xs" style="color: var(--pf-sub);">ID: <span class="font-semibold">${escapeHtml(u.id ?? '—')}</span>${u.is_admin ? ' · <span class="font-semibold" style="color:#a61a12">Администратор</span>' : ''}${u.is_banned ? ' · <span class="font-semibold" style="color:#a61a12">BAN</span>' : ''}</div>
                 <div class="mt-2 flex items-center gap-2">
-                  <span class="pf-pill pf-pill--info">План: ${escapeHtml(plan)}</span>
-                  ${state.isDemo ? `<span class="pf-badge">ДЕМО</span>` : ''}
+                  <span class="pf-pill pf-pill--info">План: ${escapeHtml(u.plan || 'FREE')}</span>
+                  <span class="pf-badge">${state.apiOk ? 'API OK' : 'API OFF'}</span>
                 </div>
               </div>
             </div>
           </div>
 
           <div class="pf-card p-4">
-            <div class="text-base font-semibold">Настройки и функции</div>
-            <div class="text-xs mt-1" style="color: var(--pf-sub);">Интерфейс в стиле Telegram Native 2024: белые блоки, radius 12px, разделители.</div>
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold">Тарификация</div>
+              <span class="pf-pill pf-pill--info">Лимит принтеров: ${escapeHtml(printersLimit)}</span>
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              ${quotaBar('Принтеры', printersUsed, printersLimit, printersPct, printersUsed <= printersLimit ? 'good' : 'warn')}
+              ${quotaBar('Модели', modelsUsed, modelsLimit, modelsPct, 'info')}
+            </div>
           </div>
 
-          <div class="pf-card p-2" style="box-shadow: var(--pf-shadow);">
-            ${settingsHtml}
-          </div>
-
-          ${adminHtml}
+          ${adminPanel}
 
           <div class="pf-card p-4">
-            <div class="flex flex-col gap-2">
-              <div class="flex items-center justify-between">
-                <div class="text-sm font-semibold">О проекте</div>
-                <div class="text-xs" style="color: var(--pf-sub);">v${escapeHtml(APP_VERSION)}</div>
-              </div>
-              <div class="text-xs" style="color: var(--pf-sub);">Разработчик: <a class="font-semibold" href="https://t.me/${encodeURIComponent(DEV_HANDLE.replace('@',''))}" target="_blank" rel="noreferrer">${escapeHtml(DEV_HANDLE)}</a></div>
-              <div class="text-xs" style="color: var(--pf-sub);">Поддержать: <a class="font-semibold" href="${escapeHtml(DONATE_URL)}" target="_blank" rel="noreferrer">Донат</a></div>
-              <div class="mt-2 flex gap-2">
-                <button id="copyDebug" class="px-3 py-2 rounded-xl" style="background: rgba(0,0,0,.04);">Скопировать диагностику</button>
-                <button id="openDonate" class="px-3 py-2 rounded-xl" style="background: rgba(47,107,255,.08); border: 1px solid rgba(47,107,255,.22); color: #1d46aa;">Поддержать</button>
-              </div>
+            <div class="text-sm font-semibold">initData (для отладки)</div>
+            <div class="mt-2 flex items-center gap-2">
+              <input id="initDataInput" class="w-full rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Подставится автоматически из Telegram WebApp" value="${escapeHtml(initData)}" />
+              <button id="applyInitData" class="rounded-xl px-3 py-2 text-xs" style="background: rgba(0,0,0,.04);">Применить</button>
+            </div>
+            <div class="mt-2 text-[11px]" style="color: var(--pf-sub);">Если мини‑апп открыт в Telegram — initData будет считано автоматически. Иначе вставьте вручную и нажмите «Применить».</div>
+          </div>
+
+          <div class="pf-card p-4">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold">Диагностика</div>
+              <span class="pf-pill ${state.apiOk ? 'pf-pill--good' : 'pf-pill--bad'}">${state.apiOk ? 'OK' : 'ERROR'}</span>
+            </div>
+            <div class="mt-2 text-xs" style="color: var(--pf-sub);">
+              <div class="flex items-center justify-between"><span>Серверное время</span><span class="font-semibold">${escapeHtml(fmtDateTime(state.server_time))}</span></div>
+              <div class="flex items-center justify-between"><span>Последняя ошибка</span><span class="font-semibold truncate max-w-[12rem]">${escapeHtml(state.debug.lastError || '—')}</span></div>
+              <div class="flex items-center justify-between"><span>Telegram WebApp</span><span class="font-semibold">${escapeHtml(window.Telegram?.WebApp ? 'Да' : 'Нет')}</span></div>
             </div>
           </div>
         </div>
       `;
 
-      // Actions
-      $$('#tab-profile [data-action="setting"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          toast('Этот экран — демонстрация UI. В реальном проекте здесь открываются соответствующие модули.');
+      $('#applyInitData')?.addEventListener('click', async () => {
+        const v = $('#initDataInput')?.value?.trim() || '';
+        await load(v);
+        renderAll();
+        toast('initData применён.');
+      });
+
+      if (u.is_admin){
+        $('#adminCreatePromo')?.addEventListener('click', async () => {
+          const code = ($('#adminPromoCode')?.value || '').trim();
+          const plan = ($('#adminPromoPlan')?.value || 'FREE').trim();
+          const limit = Number(($('#adminPromoLimit')?.value || '1').trim());
+          const daysRaw = ($('#adminPromoDays')?.value || '').trim();
+          const days = daysRaw ? Number(daysRaw) : null;
+          const single = Boolean($('#adminPromoSingle')?.checked);
+          if (!code){ toast('Введите код промокода.'); return; }
+          try{
+            const res = await apiAdmin('/api/admin/promo/create', { code, plan, limit_printers: limit, expires_days: days, is_single_use: single }, $('#initDataInput')?.value?.trim() || initData);
+            state.admin.lastResult = `Промокод создан: ${safeText(res?.code || code)}`;
+            toast('Промокод создан.');
+            renderAll();
+          } catch (e){
+            state.admin.lastResult = safeText(e?.message || e);
+            toast(`Ошибка: ${state.admin.lastResult}`, { ms: 4200 });
+            renderAll();
+          }
         });
-      });
 
-      $('#openDonate')?.addEventListener('click', () => {
-        window.open(DONATE_URL, '_blank', 'noopener,noreferrer');
-      });
+        $('#adminSetSub')?.addEventListener('click', async () => {
+          const user_id = Number(($('#adminUserId')?.value || '').trim());
+          const plan = ($('#adminUserPlan')?.value || 'FREE').trim();
+          const limit = Number(($('#adminUserLimit')?.value || '1').trim());
+          const daysRaw = ($('#adminUserDays')?.value || '').trim();
+          const days = daysRaw ? Number(daysRaw) : null;
+          if (!Number.isFinite(user_id) || user_id <= 0){ toast('Введите корректный User ID.'); return; }
+          try{
+            const res = await apiAdmin('/api/admin/user/subscription', { user_id, plan, limit_printers: limit, expires_days: days }, $('#initDataInput')?.value?.trim() || initData);
+            state.admin.lastResult = `Подписка обновлена для ${user_id}: ${safeText(res?.plan || plan)}`;
+            toast('Подписка обновлена.');
+            renderAll();
+          } catch (e){
+            state.admin.lastResult = safeText(e?.message || e);
+            toast(`Ошибка: ${state.admin.lastResult}`, { ms: 4200 });
+            renderAll();
+          }
+        });
 
-      $('#copyDebug')?.addEventListener('click', async () => {
-        const dbg = {
-          version: APP_VERSION,
-          use_mock: USE_MOCK,
-          is_demo: state.isDemo,
-          is_admin: state.isAdmin,
-          user: state.user,
-          subscription: state.subscription,
-          counts: { printers: state.printers.length, orders: state.orders.length, models: state.models.length },
-          ua: navigator.userAgent,
-          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          tg: {
-            hasWebApp: Boolean(window.Telegram?.WebApp),
-            platform: safeText(window.Telegram?.WebApp?.platform || ''),
-            colorScheme: safeText(window.Telegram?.WebApp?.colorScheme || ''),
+        const banCommon = async (banned) => {
+          const user_id = Number(($('#adminUserId')?.value || '').trim());
+          if (!Number.isFinite(user_id) || user_id <= 0){ toast('Введите корректный User ID.'); return; }
+          try{
+            await apiAdmin('/api/admin/user/ban', { user_id, banned }, $('#initDataInput')?.value?.trim() || initData);
+            state.admin.lastResult = banned ? `Пользователь ${user_id} забанен.` : `Пользователь ${user_id} разбанен.`;
+            toast(banned ? 'Бан применён.' : 'Разбан применён.');
+            renderAll();
+          } catch (e){
+            state.admin.lastResult = safeText(e?.message || e);
+            toast(`Ошибка: ${state.admin.lastResult}`, { ms: 4200 });
+            renderAll();
           }
         };
-        try{
-          await navigator.clipboard.writeText(JSON.stringify(dbg, null, 2));
-          toast('Диагностика скопирована в буфер обмена.');
-        } catch {
-          toast('Не удалось скопировать (ограничения браузера).');
-        }
-      });
+
+        $('#adminBan')?.addEventListener('click', () => banCommon(true));
+        $('#adminUnban')?.addEventListener('click', () => banCommon(false));
+      }
     }
 
     function renderAll(){
@@ -1319,12 +770,10 @@
       if (state.ui.activeTab === 'work') renderWork();
       if (state.ui.activeTab === 'profile') renderProfile();
 
-      // Sub-title
-      const sub = state.isDemo
-        ? 'Демо режим: backend недоступен'
-        : `Данные синхронизированы · План: ${safeText(state.subscription?.plan || 'FREE')}`;
-      const subtitle = $('#subtitle');
-      if (subtitle) subtitle.textContent = sub;
+      const sub = state.apiOk
+        ? `Данные синхронизированы · План: ${safeText(state.user.plan || 'FREE')}`
+        : 'Нет связи с сервером';
+      $('#subtitle').textContent = sub;
     }
 
     function setTab(tab){
@@ -1340,59 +789,33 @@
       const m = $('#filterModal');
       if (!m) return;
       m.dataset.open = open ? 'true' : 'false';
-      if (open){
-        // sync UI
-        $('#ordersFirst').checked = Boolean(state.ui.filters.ordersFirst);
-      }
+      if (open) $('#ordersFirst').checked = Boolean(state.ui.filters.ordersFirst);
     }
 
     function bindUI(){
-      // Tabs
-      $$('.pf-tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => setTab(btn.getAttribute('data-tab')));
-      });
+      $$('.pf-tab-btn').forEach(btn => btn.addEventListener('click', () => setTab(btn.getAttribute('data-tab'))));
 
-      // Search
       const si = $('#searchInput');
-      if (si){
-        si.addEventListener('input', () => {
-          state.ui.search = safeText(si.value);
-          renderAll();
-        });
-      }
-      $('#clearSearch')?.addEventListener('click', () => {
-        state.ui.search = '';
-        if (si) si.value = '';
-        renderAll();
-      });
+      si?.addEventListener('input', () => { state.ui.search = safeText(si.value); renderAll(); });
+      $('#clearSearch')?.addEventListener('click', () => { state.ui.search=''; if (si) si.value=''; renderAll(); });
 
-      // Refresh
       $('#refreshBtn')?.addEventListener('click', async () => {
-        toast('Обновляю данные…');
+        toast('Обновляю…');
         $('#loading')?.classList.remove('hidden');
-        try{
-          await bootstrap();
-        } finally {
-          renderAll();
-          toast(state.isDemo ? 'Показаны демо‑данные.' : 'Данные обновлены.');
-        }
+        try { await load(getTgInitData()); }
+        finally { renderAll(); }
       });
 
-      // Filter modal
       $('#filterBtn')?.addEventListener('click', () => openFilter(true));
       $('#closeFilter')?.addEventListener('click', () => openFilter(false));
-      $('#filterModal')?.addEventListener('click', (e) => {
-        if (e.target && e.target.id === 'filterModal') openFilter(false);
-      });
+      $('#filterModal')?.addEventListener('click', (e) => { if (e.target?.id === 'filterModal') openFilter(false); });
 
-      // Filter selection buttons (delegation)
       $('#filterModal')?.addEventListener('click', (e) => {
         const btn = e.target.closest('button[data-filter]');
         if (!btn) return;
         const filter = btn.getAttribute('data-filter');
         const value = btn.getAttribute('data-value');
-        if (!filter) return;
-        if (filter === 'printer_size') state.ui.filters.printer_size = value;
+        if (filter === 'printer_state') state.ui.filters.printer_state = value;
         if (filter === 'model_sort') state.ui.filters.model_sort = value;
         toast('Фильтр выбран. Нажмите «Применить».', { ms: 1400 });
       });
@@ -1405,41 +828,41 @@
       });
 
       $('#resetFilters')?.addEventListener('click', () => {
-        state.ui.filters = { printer_size: 'all', model_sort: 'volume_desc', ordersFirst: true };
+        state.ui.filters = { printer_state: 'all', model_sort: 'new', ordersFirst: true };
         if ($('#ordersFirst')) $('#ordersFirst').checked = true;
         openFilter(false);
         renderAll();
         toast('Фильтры сброшены.');
       });
 
-      // Keyboard escape closes modal
-      window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') openFilter(false);
-      });
+      window.addEventListener('keydown', (e) => { if (e.key === 'Escape') openFilter(false); });
+    }
+
+    async function load(initData){
+      state.debug.lastError = null;
+      try{
+        const payload = await apiBootstrap(initData);
+        state.apiOk = true;
+        $('#banner')?.classList.add('hidden');
+        normalizeFromBackend(payload);
+      } catch (e){
+        state.apiOk = false;
+        state.debug.lastError = safeText(e?.message || e);
+        $('#banner')?.classList.remove('hidden');
+        const u = getTelegramUserUnsafe();
+        if (u && !state.user.id){ state.user.id = u.id; state.user.first_name = u.first_name; state.user.photo_url = u.photo_url || state.user.photo_url; }
+      }
     }
 
     async function init(){
       applyTelegramChrome();
       bindUI();
-
-      // Small UX: show version in title
       document.title = `PrintFarm v${APP_VERSION}`;
 
-      await bootstrap();
+      $('#loading')?.classList.remove('hidden');
+      await load(getTgInitData());
       renderAll();
-
-      // If run in Telegram: set main button hints / haptic optionally
-      try{
-        const tg = window.Telegram?.WebApp;
-        if (tg){
-          tg.setHeaderColor?.(tg.colorScheme === 'dark' ? '#0f1115' : '#f1f2f6');
-          tg.setBackgroundColor?.(tg.colorScheme === 'dark' ? '#0f1115' : '#f1f2f6');
-        }
-      } catch {
-        // ignore
-      }
-
-      toast(state.isDemo ? 'Демо режим: backend недоступен.' : 'Подключение к серверу установлено.');
+      toast(state.apiOk ? 'Подключение к серверу установлено.' : 'Не удалось подключиться к API.', { ms: 2800 });
     }
 
     init();
