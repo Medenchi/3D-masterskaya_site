@@ -1,871 +1,1957 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="color-scheme" content="light dark" />
-  <title>PrintFarm Mini App v2.6.8</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    :root{
-      --pf-bg:#f1f2f6;
-      --pf-card:#ffffff;
-      --pf-divider:rgba(0,0,0,.08);
-      --pf-text:#111827;
-      --pf-sub:#6b7280;
-      --pf-accent:#2f6bff;
-      --pf-good:#00c853;
-      --pf-warn:#ffb300;
-      --pf-bad:#ff3b30;
-      --pf-purple:#7c3aed;
-      --pf-cyan:#06b6d4;
-      --pf-shadow:0 8px 24px rgba(0,0,0,.06);
-      --pf-radius:12px;
-      --pf-safe-bottom: env(safe-area-inset-bottom, 0px);
-      --pf-safe-top: env(safe-area-inset-top, 0px);
+# ============================================================
+# PrintFarm OS — bot.py (ALL-IN-ONE) — AIROGRAM v3 FIXED
+# FastAPI + Telegram Mini App Auth + aiogram bot + SQLite
+#
+# ВАЖНО:
+# 1) Этот файл рассчитан на aiogram v3 (по Вашей ошибке именно он стоит на хостинге).
+# 2) В боте НЕТ обращений "на ты" — только "Вы/Ваш/Вам".
+# 3) Mini App работает через /api/* и X-Telegram-InitData (проверка подписи).
+# 4) Бот НЕ запускает печать сам — он предлагает, ставит в очередь, сообщает о завершении.
+#    Запуск печати выполняется Вашими действиями в мини-аппе (кнопка Start) или через команды бота.
+# 5) Админка исправлена: is_admin НЕ слетает при апдейте пользователя (OR-логика) + /claim_admin.
+# ============================================================
+
+import os
+import io
+import json
+import time
+import math
+import hmac
+import hashlib
+import asyncio
+import logging
+import sqlite3
+import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import FastAPI, Request, HTTPException, Depends
+from pydantic import BaseModel
+
+from PIL import Image, ImageDraw, ImageFont
+
+# --- aiogram v3 ---
+from aiogram import Bot, Dispatcher, Router, F
+from aiogram.filters import Command
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    BufferedInputFile,
+)
+
+# ----------------------------
+# CONFIG
+# ----------------------------
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("printfarm")
+
+DATABASE = os.getenv("DATABASE", "printfarm.db")
+BOT_TOKEN = os.getenv("BOT_TOKEN", os.getenv("TELEGRAM_BOT_TOKEN", ""))  # must exist for polling + initData verify
+if not BOT_TOKEN:
+    log.warning("BOT_TOKEN is empty. Bot polling + initData verification will fail until you set it.")
+
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "CHANGE_ME_ADMIN_SECRET")
+ADMIN_IDS = set(int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit())
+
+ASSETS_DIR = os.getenv("ASSETS_DIR", "assets")
+FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
+FONT_REG_PATH = os.path.join(FONTS_DIR, "Inter-Regular.ttf")
+FONT_BOLD_PATH = os.path.join(FONTS_DIR, "Inter-Bold.ttf")
+
+WORKER_TICK_SEC = int(os.getenv("WORKER_TICK_SEC", "10"))
+
+# Europe/Berlin (упрощённо без DST, для логики "ночь/день" достаточно)
+TZ_BERLIN = datetime.timezone(datetime.timedelta(hours=1))
+
+# ----------------------------
+# APP + BOT
+# ----------------------------
+app = FastAPI()
+
+bot = Bot(BOT_TOKEN) if BOT_TOKEN else None  # allow API-only run without token
+dp = Dispatcher()  # ✅ aiogram v3
+router = Router()
+dp.include_router(router)
+
+# ----------------------------
+# DB helpers
+# ----------------------------
+def db() -> sqlite3.Connection:
+    con = sqlite3.connect(DATABASE)
+    con.row_factory = sqlite3.Row
+    return con
+
+def now_ts() -> int:
+    return int(time.time())
+
+def utc_now_iso() -> str:
+    return datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+def berlin_now() -> datetime.datetime:
+    return datetime.datetime.now(TZ_BERLIN)
+
+def is_night_now() -> bool:
+    h = berlin_now().hour
+    return h >= 21 or h <= 7
+
+def _ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+def _table_has_column(con: sqlite3.Connection, table: str, col: str) -> bool:
+    rows = con.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(r["name"] == col for r in rows)
+
+def init_fonts_best_effort() -> None:
+    _ensure_dir(FONTS_DIR)
+    if os.path.exists(FONT_REG_PATH) and os.path.exists(FONT_BOLD_PATH):
+        return
+
+    # Best-effort download from GitHub raw (если сеть на хостинге запрещена — просто будет дефолтный шрифт)
+    import urllib.request
+    urls = {
+        FONT_REG_PATH: "https://raw.githubusercontent.com/rsms/inter/master/docs/font-files/Inter-Regular.ttf",
+        FONT_BOLD_PATH: "https://raw.githubusercontent.com/rsms/inter/master/docs/font-files/Inter-Bold.ttf",
     }
+    for path, url in urls.items():
+        if os.path.exists(path):
+            continue
+        try:
+            with urllib.request.urlopen(url, timeout=8) as r:
+                data = r.read()
+            with open(path, "wb") as f:
+                f.write(data)
+            log.info("Downloaded font: %s", path)
+        except Exception as e:
+            log.warning("Font download failed (%s): %s", url, e)
 
-    html, body { height: 100%; }
-    body{
-      background: var(--pf-bg);
-      color: var(--pf-text);
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      overscroll-behavior: none;
-    }
+def font_regular(size: int) -> ImageFont.ImageFont:
+    try:
+        return ImageFont.truetype(FONT_REG_PATH, size)
+    except Exception:
+        return ImageFont.load_default()
 
-    .pf-card{ background: var(--pf-card); border-radius: var(--pf-radius); box-shadow: var(--pf-shadow); }
-    .pf-divider{ border-top: 1px solid var(--pf-divider); }
+def font_bold(size: int) -> ImageFont.ImageFont:
+    try:
+        return ImageFont.truetype(FONT_BOLD_PATH, size)
+    except Exception:
+        return ImageFont.load_default()
 
-    .pf-bottom-bar{
-      position: fixed;
-      left: 0; right: 0;
-      bottom: 0;
-      padding-bottom: calc(10px + var(--pf-safe-bottom));
-      padding-top: 10px;
-      background: rgba(255,255,255,.75);
-      border-top: 1px solid rgba(0,0,0,.06);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      z-index: 50;
-    }
-    .pf-icon{ width: 24px; height: 24px; display: inline-block; }
+def init_db() -> None:
+    with db() as con:
+        con.executescript(
+            """
+            PRAGMA journal_mode=WAL;
 
-    .pf-tab-btn[aria-selected="true"] .pf-tab-label{ color: var(--pf-accent); }
-    .pf-tab-btn[aria-selected="true"] svg{ color: var(--pf-accent); }
-    .pf-tab-btn[aria-selected="false"] svg{ color: rgba(17,24,39,.55); }
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                first_name TEXT,
+                role TEXT DEFAULT 'operator',
+                is_admin INTEGER DEFAULT 0,
+                is_banned INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
 
-    .pf-modal-backdrop{
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,.25);
-      display: none;
-      align-items: flex-end;
-      justify-content: center;
-      z-index: 60;
-    }
-    .pf-modal-backdrop[data-open="true"]{ display: flex; }
-    .pf-modal{
-      width: 100%;
-      max-width: 720px;
-      border-top-left-radius: 18px;
-      border-top-right-radius: 18px;
-      background: var(--pf-card);
-      padding: 14px 14px calc(14px + var(--pf-safe-bottom));
-      box-shadow: 0 -14px 34px rgba(0,0,0,.18);
-    }
+            CREATE TABLE IF NOT EXISTS printers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                display_no INTEGER,
+                name TEXT,
+                brand TEXT,
+                model_name TEXT,
+                bed_x REAL,
+                bed_y REAL,
+                bed_z REAL,
+                status TEXT DEFAULT 'idle',
+                image_url TEXT,
+                repair_note TEXT,
+                active_color TEXT,
+                current_queue_id INTEGER,
+                started_at INTEGER,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
 
-    .pf-skeleton{
-      background: linear-gradient(90deg, rgba(0,0,0,.06), rgba(0,0,0,.03), rgba(0,0,0,.06));
-      background-size: 200% 100%;
-      animation: pfShimmer 1.25s infinite;
-      border-radius: 10px;
-    }
-    @keyframes pfShimmer{ 0%{ background-position: 0% 0; } 100%{ background-position: 200% 0; } }
+            CREATE TABLE IF NOT EXISTS models (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                filename TEXT NOT NULL,
+                kind TEXT DEFAULT 'manual', -- stl/gcode/manual
+                estimated_sec INTEGER,
+                size_x REAL,
+                size_y REAL,
+                size_z REAL,
+                pieces_per_print INTEGER DEFAULT 1,
+                default_color TEXT,
+                tags_json TEXT DEFAULT '[]',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
 
-    .pf-pill{ border-radius: 999px; padding: 4px 10px; font-weight: 600; font-size: 12px; letter-spacing: .2px; }
-    .pf-pill--good{ background: rgba(0,200,83,.12); color: #067a34; border: 1px solid rgba(0,200,83,.22); }
-    .pf-pill--warn{ background: rgba(255,179,0,.14); color: #8a5a00; border: 1px solid rgba(255,179,0,.22); }
-    .pf-pill--bad{ background: rgba(255,59,48,.12); color: #a61a12; border: 1px solid rgba(255,59,48,.22); }
-    .pf-pill--info{ background: rgba(47,107,255,.12); color: #1d46aa; border: 1px solid rgba(47,107,255,.22); }
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                total_qty INTEGER NOT NULL,
+                done_qty INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'open', -- open/done/closed
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
 
-    .pf-setting-icon{ width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: 0 0 auto; }
+            CREATE TABLE IF NOT EXISTS print_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                printer_id INTEGER NOT NULL,
+                model_id INTEGER NOT NULL,
+                order_id INTEGER,
+                qty INTEGER DEFAULT 1,
+                status TEXT DEFAULT 'queued', -- queued/printing/paused/done/canceled/failed
+                estimated_sec INTEGER,
+                color TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                started_at INTEGER,
+                finished_at INTEGER,
+                paused_at INTEGER,
+                paused_elapsed INTEGER DEFAULT 0
+            );
 
-    .pf-tap{ -webkit-tap-highlight-color: transparent; }
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                payload_json TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT (datetime('now'))
+            );
 
-    .pf-main{ padding-bottom: 90px; }
+            CREATE INDEX IF NOT EXISTS idx_printers_user ON printers(user_id);
+            CREATE INDEX IF NOT EXISTS idx_models_user ON models(user_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
+            CREATE INDEX IF NOT EXISTS idx_queue_printer ON print_queue(printer_id, status);
+            """
+        )
 
-    .pf-toast-wrap{ position: fixed; left: 0; right: 0; top: calc(10px + var(--pf-safe-top)); display: flex; justify-content: center; pointer-events: none; z-index: 70; }
-    .pf-toast{ pointer-events: auto; background: rgba(17,24,39,.92); color: white; padding: 10px 12px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); max-width: min(680px, calc(100% - 24px)); font-size: 13px; line-height: 1.3; display: none; }
-    .pf-toast[data-open="true"]{ display: block; }
+        # Safe migrations
+        if not _table_has_column(con, "users", "role"):
+            con.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'operator'")
 
-    .pf-badge{ font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(124,58,237,.12); border: 1px solid rgba(124,58,237,.22); color: #5b21b6; }
-  </style>
-</head>
-<body class="pf-tap">
-  <div class="pf-toast-wrap"><div id="toast" class="pf-toast" role="status" aria-live="polite"></div></div>
+        for col, ddl in [
+            ("display_no", "ALTER TABLE printers ADD COLUMN display_no INTEGER"),
+            ("repair_note", "ALTER TABLE printers ADD COLUMN repair_note TEXT"),
+            ("active_color", "ALTER TABLE printers ADD COLUMN active_color TEXT"),
+            ("current_queue_id", "ALTER TABLE printers ADD COLUMN current_queue_id INTEGER"),
+            ("started_at", "ALTER TABLE printers ADD COLUMN started_at INTEGER"),
+        ]:
+            if not _table_has_column(con, "printers", col):
+                con.execute(ddl)
 
-  <div class="max-w-3xl mx-auto px-3">
-    <header class="pt-4" style="padding-top: calc(16px + var(--pf-safe-top));">
-      <div class="flex items-center justify-between">
-        <div class="min-w-0">
-          <div class="text-[15px] font-semibold tracking-tight">PrintFarm</div>
-          <div id="subtitle" class="text-xs text-gray-500 truncate">Экосистема управления 3D‑фермой</div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button id="filterBtn" class="pf-card px-3 py-2 flex items-center gap-2" title="Сортировка и фильтры">
-            <span class="text-sm font-semibold">Фильтр</span>
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          </button>
-          <button id="refreshBtn" class="pf-card px-3 py-2 flex items-center gap-2" title="Обновить">
-            <span class="text-sm font-semibold">Обновить</span>
-            <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-        </div>
-      </div>
+        for col, ddl in [
+            ("pieces_per_print", "ALTER TABLE models ADD COLUMN pieces_per_print INTEGER DEFAULT 1"),
+            ("default_color", "ALTER TABLE models ADD COLUMN default_color TEXT"),
+            ("tags_json", "ALTER TABLE models ADD COLUMN tags_json TEXT DEFAULT '[]'"),
+        ]:
+            if not _table_has_column(con, "models", col):
+                con.execute(ddl)
 
-      <div class="mt-3 pf-card px-3 py-2 flex items-center gap-2">
-        <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Z" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input id="searchInput" class="w-full bg-transparent outline-none text-sm" placeholder="Поиск: принтер, заказ, модель…" autocomplete="off" />
-        <button id="clearSearch" class="text-sm text-gray-500 px-2 py-1 rounded-lg hover:bg-black/5" title="Очистить">Сброс</button>
-      </div>
+        for col, ddl in [
+            ("paused_at", "ALTER TABLE print_queue ADD COLUMN paused_at INTEGER"),
+            ("paused_elapsed", "ALTER TABLE print_queue ADD COLUMN paused_elapsed INTEGER DEFAULT 0"),
+            ("color", "ALTER TABLE print_queue ADD COLUMN color TEXT"),
+        ]:
+            if not _table_has_column(con, "print_queue", col):
+                con.execute(ddl)
 
-      <div id="banner" class="mt-3 hidden">
-        <div class="pf-card px-3 py-2 flex items-start gap-2">
-          <div class="mt-[2px]"><svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 9v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 17h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M10.29 3.86 2.82 17.18A2 2 0 0 0 4.55 20h14.9a2 2 0 0 0 1.73-2.82L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div>
-          <div class="min-w-0">
-            <div class="text-sm font-semibold">API недоступно</div>
-            <div class="text-xs text-gray-500">Проверьте backend: нужен <code class="px-1 py-[1px] rounded bg-black/5">GET /api/bootstrap</code> и заголовок <code class="px-1 py-[1px] rounded bg-black/5">X-Telegram-InitData</code>.</div>
-          </div>
-        </div>
-      </div>
-    </header>
+init_db()
+init_fonts_best_effort()
 
-    <main class="pf-main mt-4" id="main">
-      <section id="tab-printers" class="tab-pane"></section>
-      <section id="tab-work" class="tab-pane hidden"></section>
-      <section id="tab-profile" class="tab-pane hidden"></section>
+# ----------------------------
+# AUDIT
+# ----------------------------
+def audit(user_id: int, action: str, payload: Optional[dict] = None) -> None:
+    with db() as con:
+        con.execute(
+            "INSERT INTO audit_log(user_id, action, payload_json) VALUES(?,?,?)",
+            (user_id, action, json.dumps(payload or {}, ensure_ascii=False)),
+        )
 
-      <section id="loading" class="space-y-3">
-        <div class="pf-card p-4"><div class="h-4 w-48 pf-skeleton"></div><div class="mt-3 h-3 w-64 pf-skeleton"></div><div class="mt-2 h-3 w-52 pf-skeleton"></div></div>
-        <div class="pf-card p-4"><div class="h-4 w-40 pf-skeleton"></div><div class="mt-3 grid grid-cols-2 gap-3"><div class="h-16 pf-skeleton"></div><div class="h-16 pf-skeleton"></div></div></div>
-        <div class="pf-card p-4"><div class="h-4 w-56 pf-skeleton"></div><div class="mt-3 h-20 pf-skeleton"></div></div>
-      </section>
-    </main>
-  </div>
+# ----------------------------
+# Telegram Mini App initData verification
+# ----------------------------
+def _parse_init_data(init_data: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for part in init_data.split("&"):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            out[k] = v
+    return out
 
-  <nav class="pf-bottom-bar">
-    <div class="max-w-3xl mx-auto px-6">
-      <div class="grid grid-cols-3 gap-2">
-        <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="printers" aria-selected="true">
-          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 7V4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" stroke="currentColor" stroke-width="2"/><path d="M7 17h10v5H7v-5Z" stroke="currentColor" stroke-width="2"/><path d="M6 7h12a4 4 0 0 1 4 4v4a2 2 0 0 1-2 2h-3v-4H7v4H4a2 2 0 0 1-2-2v-4a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="2"/></svg>
-          <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Принтеры</div>
-        </button>
-        <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="work" aria-selected="false">
-          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 7h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 11h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-          <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Заказы</div>
-        </button>
-        <button class="pf-tab-btn flex flex-col items-center justify-center gap-1" data-tab="profile" aria-selected="false">
-          <svg class="pf-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 21a8 8 0 1 0-16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" stroke="currentColor" stroke-width="2"/></svg>
-          <div class="pf-tab-label text-[11px] font-semibold text-gray-500">Профиль</div>
-        </button>
-      </div>
-    </div>
-  </nav>
+def _check_init_data(init_data: str, bot_token: str, max_age_sec: int = 60 * 60 * 24) -> Dict[str, Any]:
+    if not bot_token:
+        raise HTTPException(500, "BOT_TOKEN not configured")
 
-  <div id="filterModal" class="pf-modal-backdrop" role="dialog" aria-modal="true" aria-label="Сортировка и фильтры">
-    <div class="pf-modal">
-      <div class="flex items-center justify-between">
-        <div class="text-base font-semibold">Сортировка и фильтры</div>
-        <button id="closeFilter" class="px-3 py-2 rounded-xl hover:bg-black/5">Закрыть</button>
-      </div>
-      <div class="mt-3 pf-divider"></div>
+    data = _parse_init_data(init_data)
+    received_hash = data.get("hash")
+    if not received_hash:
+        raise HTTPException(401, "Missing hash")
 
-      <div class="mt-3 grid gap-3">
-        <div>
-          <div class="text-sm font-semibold">Принтеры</div>
-          <div class="mt-2 grid grid-cols-2 gap-2">
-            <button class="pf-card px-3 py-2 text-left" data-filter="printer_state" data-value="all"><div class="text-sm font-semibold">Все</div><div class="text-xs text-gray-500">Без ограничения</div></button>
-            <button class="pf-card px-3 py-2 text-left" data-filter="printer_state" data-value="printing"><div class="text-sm font-semibold">Печатают</div><div class="text-xs text-gray-500">Только активные</div></button>
-            <button class="pf-card px-3 py-2 text-left" data-filter="printer_state" data-value="idle"><div class="text-sm font-semibold">Свободны</div><div class="text-xs text-gray-500">Готовы к печати</div></button>
-            <button class="pf-card px-3 py-2 text-left" data-filter="printer_state" data-value="problem"><div class="text-sm font-semibold">Проблемы</div><div class="text-xs text-gray-500">Пауза/ошибка/ремонт</div></button>
-          </div>
-        </div>
+    auth_date = int(data.get("auth_date", "0") or "0")
+    if auth_date and (now_ts() - auth_date) > max_age_sec:
+        raise HTTPException(401, "initData expired")
 
-        <div>
-          <div class="text-sm font-semibold">Модели</div>
-          <div class="mt-2 grid grid-cols-2 gap-2">
-            <button class="pf-card px-3 py-2 text-left" data-filter="model_sort" data-value="new"><div class="text-sm font-semibold">Новые</div><div class="text-xs text-gray-500">Сначала свежие</div></button>
-            <button class="pf-card px-3 py-2 text-left" data-filter="model_sort" data-value="volume_desc"><div class="text-sm font-semibold">Объём</div><div class="text-xs text-gray-500">Сначала большие</div></button>
-          </div>
-        </div>
+    check_pairs = []
+    for k in sorted(data.keys()):
+        if k == "hash":
+            continue
+        check_pairs.append(f"{k}={data[k]}")
+    data_check_string = "\n".join(check_pairs)
 
-        <div>
-          <div class="text-sm font-semibold">Приоритет</div>
-          <div class="mt-2 pf-card px-3 py-3">
-            <label class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <div class="text-sm font-semibold">Заказы приоритетнее моделей</div>
-                <div class="text-xs text-gray-500">Вкладка «Заказы»: сверху заказы, ниже модели</div>
-              </div>
-              <input id="ordersFirst" type="checkbox" class="h-5 w-5" checked />
-            </label>
-          </div>
-        </div>
+    secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
+    calc_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
 
-        <div class="flex gap-2">
-          <button id="applyFilters" class="flex-1 pf-card px-3 py-3 font-semibold" style="border: 1px solid rgba(47,107,255,.22); background: rgba(47,107,255,.08); color: #1d46aa;">Применить</button>
-          <button id="resetFilters" class="pf-card px-3 py-3 font-semibold">Сбросить</button>
-        </div>
-      </div>
-    </div>
-  </div>
+    if not hmac.compare_digest(calc_hash, received_hash):
+        raise HTTPException(401, "Bad initData signature")
 
-  <script>
-    'use strict';
+    import urllib.parse
+    user_raw = data.get("user", "{}")
+    try:
+        user_json = urllib.parse.unquote(user_raw)
+        user_obj = json.loads(user_json)
+    except Exception:
+        try:
+            user_obj = json.loads(user_raw)
+        except Exception:
+            user_obj = {}
 
-    const APP_VERSION = '2.6.8';
-    const API_BASE = '';
+    return {"data": data, "user": user_obj}
 
-    const state = {
-      apiOk: false,
-      server_time: null,
-      user: { id: null, first_name: 'Пользователь', photo_url: '', plan: 'FREE', limit_printers: 1, is_admin: false, is_banned: false },
-      printers: [],
-      models: [],
-      orders: [],
-      admin: { lastResult: null },
-      ui: { activeTab: 'printers', search: '', filters: { printer_state: 'all', model_sort: 'new', ordersFirst: true } },
-      debug: { lastError: null }
-    };
+def upsert_user_from_tg(user_obj: Dict[str, Any]) -> Dict[str, Any]:
+    uid = int(user_obj.get("id") or 0)
+    if not uid:
+        raise HTTPException(401, "No user in initData")
 
-    const $ = (sel, root=document) => root.querySelector(sel);
-    const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+    first_name = str(user_obj.get("first_name") or "Пользователь")
+    is_admin_from_env = int(uid in ADMIN_IDS)
 
-    function safeText(v){ return (v === null || v === undefined) ? '' : String(v); }
-    function escapeHtml(str){
-      return safeText(str)
-        .replaceAll('&','&amp;')
-        .replaceAll('<','&lt;')
-        .replaceAll('>','&gt;')
-        .replaceAll('"','&quot;')
-        .replaceAll("'", '&#039;');
-    }
+    with db() as con:
+        # ✅ IMPORTANT FIX: is_admin = (users.is_admin OR excluded.is_admin)
+        con.execute(
+            """
+            INSERT INTO users(id, first_name, is_admin, role, updated_at)
+            VALUES(?,?,?,?,datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+                first_name=excluded.first_name,
+                is_admin=(users.is_admin OR excluded.is_admin),
+                updated_at=datetime('now')
+            """,
+            (uid, first_name, is_admin_from_env, "admin" if is_admin_from_env else "operator"),
+        )
+        row = con.execute(
+            "SELECT id, first_name, role, is_admin, is_banned FROM users WHERE id=?",
+            (uid,),
+        ).fetchone()
 
-    function toast(message, opts={}){
-      const el = $('#toast');
-      if (!el) return;
-      const ms = typeof opts.ms === 'number' ? opts.ms : 2600;
-      el.textContent = safeText(message);
-      el.dataset.open = 'true';
-      window.clearTimeout(toast._t);
-      toast._t = window.setTimeout(() => { el.dataset.open = 'false'; }, ms);
-    }
+    return dict(row)
 
-    function fmtDateTime(iso){
-      if (!iso) return '—';
-      const d = new Date(iso);
-      if (Number.isNaN(d.getTime())) return '—';
-      return d.toLocaleString('ru-RU', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-    }
+def telegram_auth(request: Request) -> Dict[str, Any]:
+    init_data = request.headers.get("X-Telegram-InitData") or ""
+    if not init_data:
+        raise HTTPException(401, "Missing X-Telegram-InitData")
+    verified = _check_init_data(init_data, BOT_TOKEN)
+    user_obj = verified["user"]
+    user = upsert_user_from_tg(user_obj)
+    if user.get("is_banned"):
+        raise HTTPException(403, "Banned")
+    return user
 
-    function fmtSeconds(sec){
-      sec = Math.max(0, Math.floor(Number(sec || 0)));
-      const h = Math.floor(sec/3600);
-      const m = Math.floor((sec%3600)/60);
-      const s = sec%60;
-      if (h>0) return `${h} ч ${String(m).padStart(2,'0')} мин`;
-      if (m>0) return `${m} мин ${String(s).padStart(2,'0')} с`;
-      return `${s} с`;
-    }
+# ----------------------------
+# Roles / permissions
+# ----------------------------
+ROLE_OPERATOR = "operator"
+ROLE_MANAGER = "manager"
+ROLE_ADMIN = "admin"
+ROLE_ORDER = [ROLE_OPERATOR, ROLE_MANAGER, ROLE_ADMIN]
 
-    function getTgInitData(){
-      try{
-        const tg = window.Telegram?.WebApp;
-        if (tg?.initData && tg.initData.length > 0) return tg.initData;
-      } catch {}
-      return '';
-    }
+def get_user_role(uid: int) -> str:
+    with db() as con:
+        r = con.execute("SELECT role FROM users WHERE id=?", (uid,)).fetchone()
+    return (r["role"] if r else ROLE_OPERATOR) or ROLE_OPERATOR
 
-    function getTelegramUserUnsafe(){
-      try{
-        const user = window.Telegram?.WebApp?.initDataUnsafe?.user;
-        if (!user) return null;
-        return { id: user.id ?? null, first_name: user.first_name ?? 'Пользователь', photo_url: user.photo_url ?? '' };
-      } catch { return null; }
-    }
+def require_role(min_role: str):
+    def dep(user=Depends(telegram_auth)):
+        role = get_user_role(int(user["id"]))
+        if ROLE_ORDER.index(role) < ROLE_ORDER.index(min_role):
+            raise HTTPException(403, "Forbidden")
+        return user
+    return dep
 
-    function applyTelegramChrome(){
-      const tg = window.Telegram?.WebApp;
-      try{ tg?.ready?.(); tg?.expand?.(); tg?.disableVerticalSwipes?.(); } catch {}
+def require_admin_api(user=Depends(telegram_auth)):
+    if not bool(user.get("is_admin")):
+        raise HTTPException(403, "Admin only")
+    return user
 
-      try{
-        if (tg?.colorScheme === 'dark'){
-          document.documentElement.style.setProperty('--pf-bg', '#0f1115');
-          document.documentElement.style.setProperty('--pf-card', '#161a22');
-          document.documentElement.style.setProperty('--pf-divider', 'rgba(255,255,255,.08)');
-          document.documentElement.style.setProperty('--pf-text', '#e5e7eb');
-          document.documentElement.style.setProperty('--pf-sub', '#9ca3af');
-          document.querySelector('.pf-bottom-bar')?.style?.setProperty('background', 'rgba(22,26,34,.72)');
-        }
-        const link = tg?.themeParams?.link_color;
-        if (link && typeof link === 'string') document.documentElement.style.setProperty('--pf-accent', link);
-      } catch {}
-    }
+def _is_admin(uid: int) -> bool:
+    with db() as con:
+        r = con.execute("SELECT is_admin FROM users WHERE id=?", (uid,)).fetchone()
+    return bool(r and int(r["is_admin"]) == 1)
 
-    async function apiBootstrap(initData){
-      const r = await fetch(`${API_BASE}/api/bootstrap`, {
-        method: 'GET',
-        headers: initData ? { 'X-Telegram-InitData': initData } : {},
-      });
-      const txt = await r.text();
-      let data;
-      try{ data = JSON.parse(txt); } catch { data = { error: txt }; }
-      if (!r.ok) throw new Error(data?.detail || data?.error || `HTTP ${r.status}`);
-      return data;
-    }
+# ----------------------------
+# Pydantic models
+# ----------------------------
+class PrinterCreateIn(BaseModel):
+    display_no: Optional[int] = None
+    name: str
+    brand: Optional[str] = None
+    model_name: Optional[str] = None
+    bed_x: Optional[float] = None
+    bed_y: Optional[float] = None
+    bed_z: Optional[float] = None
 
-    async function apiAdmin(path, body, initData){
-      const r = await fetch(`${API_BASE}${path}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(initData ? { 'X-Telegram-InitData': initData } : {})
+class PrinterUpdateIn(BaseModel):
+    display_no: Optional[int] = None
+    name: Optional[str] = None
+    brand: Optional[str] = None
+    model_name: Optional[str] = None
+    bed_x: Optional[float] = None
+    bed_y: Optional[float] = None
+    bed_z: Optional[float] = None
+    status: Optional[str] = None
+    image_url: Optional[str] = None
+    repair_note: Optional[str] = None
+    active_color: Optional[str] = None
+
+class ModelManualIn(BaseModel):
+    filename: str
+    kind: str = "manual"
+    estimated_sec: Optional[int] = None
+    size_x: Optional[float] = None
+    size_y: Optional[float] = None
+    size_z: Optional[float] = None
+    pieces_per_print: int = 1
+    default_color: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class ModelUpdateIn(BaseModel):
+    filename: Optional[str] = None
+    estimated_sec: Optional[int] = None
+    pieces_per_print: Optional[int] = None
+    default_color: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class OrderCreateIn(BaseModel):
+    title: str
+    total_qty: int
+
+class OrderUpdateIn(BaseModel):
+    title: Optional[str] = None
+    total_qty: Optional[int] = None
+    done_qty: Optional[int] = None
+    status: Optional[str] = None
+
+class QueueEnqueueIn(BaseModel):
+    model_id: int
+    order_id: Optional[int] = None
+    qty: int = 1
+    estimated_sec: Optional[int] = None
+    color: Optional[str] = None
+
+class AdminClaimIn(BaseModel):
+    secret: str
+
+class AdminSetRoleIn(BaseModel):
+    user_id: int
+    role: str
+
+# ----------------------------
+# API: health + bootstrap
+# ----------------------------
+@app.get("/api/health")
+def health():
+    return {"ok": True, "time": utc_now_iso()}
+
+@app.get("/api/bootstrap")
+def bootstrap(user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        printers = con.execute(
+            "SELECT * FROM printers WHERE user_id=? ORDER BY COALESCE(display_no, id)",
+            (uid,),
+        ).fetchall()
+        models = con.execute(
+            "SELECT * FROM models WHERE user_id=? ORDER BY id DESC",
+            (uid,),
+        ).fetchall()
+        orders = con.execute(
+            "SELECT * FROM orders WHERE user_id=? ORDER BY id DESC",
+            (uid,),
+        ).fetchall()
+
+    return {
+        "user_data": {
+            "id": uid,
+            "first_name": user.get("first_name"),
+            "is_admin": bool(user.get("is_admin")),
+            "role": get_user_role(uid),
         },
-        body: JSON.stringify(body || {})
-      });
-      const txt = await r.text();
-      let data;
-      try{ data = JSON.parse(txt); } catch { data = { error: txt }; }
-      if (!r.ok) throw new Error(data?.detail || data?.error || `HTTP ${r.status}`);
-      return data;
+        "printers_list": [dict(r) for r in printers],
+        "models_list": [dict(r) for r in models],
+        "orders_list": [dict(r) for r in orders],
     }
 
-    function normalizeFromBackend(payload){
-      const u = payload?.user_data || payload?.user || {};
-      const printers = payload?.printers_list || payload?.printers || [];
-      const models = payload?.models_list || payload?.models || [];
-      const orders = payload?.orders_list || payload?.orders || [];
+# ----------------------------
+# API: admin claim + role
+# ----------------------------
+@app.post("/api/admin/claim")
+def admin_claim(body: AdminClaimIn, user=Depends(telegram_auth)):
+    if body.secret != ADMIN_SECRET:
+        raise HTTPException(403, "Bad secret")
+    uid = int(user["id"])
+    with db() as con:
+        con.execute("UPDATE users SET is_admin=1, role='admin', updated_at=datetime('now') WHERE id=?", (uid,))
+        row = con.execute("SELECT id, is_admin, role FROM users WHERE id=?", (uid,)).fetchone()
+    audit(uid, "admin_claim", {})
+    return {"ok": True, "user": dict(row)}
 
-      state.server_time = payload?.server_time || payload?.time || payload?.now || null;
+@app.post("/api/admin/set_role")
+def admin_set_role(body: AdminSetRoleIn, admin=Depends(require_admin_api)):
+    if body.role not in (ROLE_OPERATOR, ROLE_MANAGER, ROLE_ADMIN):
+        raise HTTPException(400, "Bad role")
+    with db() as con:
+        con.execute("UPDATE users SET role=?, updated_at=datetime('now') WHERE id=?", (body.role, body.user_id))
+    audit(int(admin["id"]), "admin_set_role", {"user_id": body.user_id, "role": body.role})
+    return {"ok": True}
 
-      state.user = {
-        id: u?.id ?? null,
-        first_name: safeText(u?.first_name || 'Пользователь'),
-        photo_url: safeText(u?.avatar_url || u?.photo_url || ''),
-        plan: safeText(u?.plan || 'FREE'),
-        limit_printers: Number(u?.limit_printers ?? payload?.subscription?.limit_printers ?? 1),
-        is_admin: Boolean(u?.is_admin),
-        is_banned: Boolean(u?.is_banned)
-      };
+# ----------------------------
+# API: printers
+# ----------------------------
+@app.get("/api/printers")
+def printers_list(user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        rows = con.execute(
+            "SELECT * FROM printers WHERE user_id=? ORDER BY COALESCE(display_no, id)",
+            (uid,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
-      state.printers = Array.isArray(printers) ? printers : [];
-      state.models = Array.isArray(models) ? models : [];
-      state.orders = Array.isArray(orders) ? orders : [];
-    }
+@app.post("/api/printers")
+def printers_create(body: PrinterCreateIn, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        con.execute(
+            """
+            INSERT INTO printers(user_id, display_no, name, brand, model_name, bed_x, bed_y, bed_z, updated_at)
+            VALUES(?,?,?,?,?,?,?, ?, datetime('now'))
+            """,
+            (uid, body.display_no, body.name, body.brand, body.model_name, body.bed_x, body.bed_y, body.bed_z),
+        )
+        pid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    audit(uid, "printer_create", {"printer_id": pid, "name": body.name})
+    return {"ok": True, "id": pid}
 
-    function matchesSearch(text, q){
-      const qq = safeText(q).trim().toLowerCase();
-      if (!qq) return true;
-      return safeText(text).toLowerCase().includes(qq);
-    }
+@app.patch("/api/printers/{pid}")
+def printers_update(pid: int, body: PrinterUpdateIn, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    fields, vals = [], []
+    for k, v in body.model_dump(exclude_none=True).items():
+        fields.append(f"{k}=?")
+        vals.append(v)
+    if not fields:
+        return {"ok": True}
+    vals += [uid, pid]
+    with db() as con:
+        cur = con.execute(
+            f"UPDATE printers SET {', '.join(fields)}, updated_at=datetime('now') WHERE user_id=? AND id=?",
+            tuple(vals),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Printer not found")
+    audit(uid, "printer_update", {"printer_id": pid, "fields": body.model_dump(exclude_none=True)})
+    return {"ok": True}
 
-    function statusPill(status){
-      const s = safeText(status).toLowerCase();
-      if (s === 'printing') return `<span class="pf-pill pf-pill--info">Печатает</span>`;
-      if (s === 'idle') return `<span class="pf-pill pf-pill--good">Свободен</span>`;
-      if (s === 'paused') return `<span class="pf-pill pf-pill--warn">Пауза</span>`;
-      if (s === 'repair') return `<span class="pf-pill pf-pill--warn">Ремонт</span>`;
-      if (s === 'error') return `<span class="pf-pill pf-pill--bad">Ошибка</span>`;
-      return `<span class="pf-pill pf-pill--info">${escapeHtml(status || 'status')}</span>`;
-    }
+@app.delete("/api/printers/{pid}")
+def printers_delete(pid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        con.execute("DELETE FROM printers WHERE user_id=? AND id=?", (uid, pid))
+    audit(uid, "printer_delete", {"printer_id": pid})
+    return {"ok": True}
 
-    function filterPrinters(list){
-      const q = state.ui.search;
-      const f = state.ui.filters.printer_state;
-      return list
-        .filter(p => matchesSearch(`${p.name} ${p.model_name} ${p.status}`, q))
-        .filter(p => {
-          if (f === 'all') return true;
-          if (f === 'printing') return safeText(p.status).toLowerCase() === 'printing';
-          if (f === 'idle') return safeText(p.status).toLowerCase() === 'idle';
-          if (f === 'problem') {
-            const st = safeText(p.status).toLowerCase();
-            return st === 'paused' || st === 'error' || st === 'repair';
-          }
-          return true;
+@app.post("/api/printers/{pid}/image")
+def printers_set_image(pid: int, body: Dict[str, str], user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    image_url = (body.get("image_url") or "").strip()
+    if not image_url:
+        raise HTTPException(400, "image_url required")
+    with db() as con:
+        con.execute(
+            "UPDATE printers SET image_url=?, updated_at=datetime('now') WHERE user_id=? AND id=?",
+            (image_url, uid, pid),
+        )
+    audit(uid, "printer_set_image", {"printer_id": pid})
+    return {"ok": True}
+
+# ----------------------------
+# API: models
+# ----------------------------
+@app.get("/api/models")
+def models_list(user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        rows = con.execute("SELECT * FROM models WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
+    return [dict(r) for r in rows]
+
+@app.post("/api/models/manual")
+def models_manual(body: ModelManualIn, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    tags_json = json.dumps(body.tags or [], ensure_ascii=False)
+    with db() as con:
+        con.execute(
+            """
+            INSERT INTO models(user_id, filename, kind, estimated_sec, size_x, size_y, size_z, pieces_per_print, default_color, tags_json, updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?, datetime('now'))
+            """,
+            (
+                uid,
+                body.filename,
+                body.kind,
+                body.estimated_sec,
+                body.size_x,
+                body.size_y,
+                body.size_z,
+                int(body.pieces_per_print or 1),
+                body.default_color,
+                tags_json,
+            ),
+        )
+        mid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    audit(uid, "model_create", {"model_id": mid, "filename": body.filename})
+    return {"ok": True, "id": mid}
+
+@app.patch("/api/models/{mid}")
+def models_update(mid: int, body: ModelUpdateIn, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    d = body.model_dump(exclude_none=True)
+    if "tags" in d:
+        d["tags_json"] = json.dumps(d.pop("tags") or [], ensure_ascii=False)
+    fields, vals = [], []
+    for k, v in d.items():
+        fields.append(f"{k}=?")
+        vals.append(v)
+    if not fields:
+        return {"ok": True}
+    vals += [uid, mid]
+    with db() as con:
+        cur = con.execute(
+            f"UPDATE models SET {', '.join(fields)}, updated_at=datetime('now') WHERE user_id=? AND id=?",
+            tuple(vals),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Model not found")
+    audit(uid, "model_update", {"model_id": mid, "fields": d})
+    return {"ok": True}
+
+@app.delete("/api/models/{mid}")
+def models_delete(mid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        con.execute("DELETE FROM models WHERE user_id=? AND id=?", (uid, mid))
+    audit(uid, "model_delete", {"model_id": mid})
+    return {"ok": True}
+
+# ----------------------------
+# API: orders
+# ----------------------------
+@app.get("/api/orders")
+def orders_list(user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        rows = con.execute("SELECT * FROM orders WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
+    return [dict(r) for r in rows]
+
+@app.post("/api/orders")
+def orders_create(body: OrderCreateIn, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        con.execute(
+            "INSERT INTO orders(user_id, title, total_qty, done_qty, status, updated_at) VALUES(?,?,?,0,'open',datetime('now'))",
+            (uid, body.title, int(body.total_qty)),
+        )
+        oid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    audit(uid, "order_create", {"order_id": oid, "title": body.title})
+    return {"ok": True, "id": oid}
+
+@app.patch("/api/orders/{oid}")
+def orders_update(oid: int, body: OrderUpdateIn, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    d = body.model_dump(exclude_none=True)
+    fields, vals = [], []
+    for k, v in d.items():
+        fields.append(f"{k}=?")
+        vals.append(v)
+    if not fields:
+        return {"ok": True}
+    vals += [uid, oid]
+    with db() as con:
+        cur = con.execute(
+            f"UPDATE orders SET {', '.join(fields)}, updated_at=datetime('now') WHERE user_id=? AND id=?",
+            tuple(vals),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Order not found")
+    audit(uid, "order_update", {"order_id": oid, "fields": d})
+    return {"ok": True}
+
+@app.post("/api/orders/{oid}/close")
+def orders_close(oid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        con.execute("UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=?", (uid, oid))
+    audit(uid, "order_close", {"order_id": oid})
+    return {"ok": True}
+
+@app.post("/api/orders/{oid}/reopen")
+def orders_reopen(oid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        con.execute("UPDATE orders SET status='open', updated_at=datetime('now') WHERE user_id=? AND id=?", (uid, oid))
+    audit(uid, "order_reopen", {"order_id": oid})
+    return {"ok": True}
+
+@app.post("/api/orders/{oid}/inc")
+def orders_inc(oid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    qty = int(body.get("qty") or 1)
+    with db() as con:
+        con.execute(
+            "UPDATE orders SET done_qty=MAX(0, done_qty+?), updated_at=datetime('now') WHERE user_id=? AND id=?",
+            (qty, uid, oid),
+        )
+        con.execute(
+            "UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=? AND done_qty>=total_qty AND status='open'",
+            (uid, oid),
+        )
+    audit(uid, "order_inc", {"order_id": oid, "qty": qty})
+    return {"ok": True}
+
+@app.post("/api/orders/{oid}/dec")
+def orders_dec(oid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    qty = int(body.get("qty") or 1)
+    with db() as con:
+        con.execute(
+            "UPDATE orders SET done_qty=MAX(0, done_qty-?), updated_at=datetime('now') WHERE user_id=? AND id=?",
+            (qty, uid, oid),
+        )
+        con.execute(
+            "UPDATE orders SET status='open', updated_at=datetime('now') WHERE user_id=? AND id=? AND done_qty<total_qty AND status='done'",
+            (uid, oid),
+        )
+    audit(uid, "order_dec", {"order_id": oid, "qty": qty})
+    return {"ok": True}
+
+@app.delete("/api/orders/{oid}")
+def orders_delete(oid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        con.execute("DELETE FROM orders WHERE user_id=? AND id=?", (uid, oid))
+    audit(uid, "order_delete", {"order_id": oid})
+    return {"ok": True}
+
+# ----------------------------
+# API: queue
+# ----------------------------
+@app.get("/api/printers/{pid}/queue")
+def queue_list(pid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        rows = con.execute(
+            """
+            SELECT q.*, m.filename AS model_name
+            FROM print_queue q
+            JOIN models m ON m.id=q.model_id
+            JOIN printers p ON p.id=q.printer_id
+            WHERE q.user_id=? AND q.printer_id=? AND p.user_id=?
+            ORDER BY q.id
+            """,
+            (uid, pid, uid),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+@app.post("/api/printers/{pid}/queue/enqueue")
+def queue_enqueue(pid: int, body: QueueEnqueueIn, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        est = body.estimated_sec
+        if est is None:
+            m = con.execute("SELECT estimated_sec FROM models WHERE user_id=? AND id=?", (uid, body.model_id)).fetchone()
+            if not m:
+                raise HTTPException(404, "Model not found")
+            est = m["estimated_sec"]
+        con.execute(
+            """
+            INSERT INTO print_queue(user_id, printer_id, model_id, order_id, qty, status, estimated_sec, color)
+            VALUES(?,?,?,?,?,'queued',?,?)
+            """,
+            (uid, pid, body.model_id, body.order_id, int(body.qty), est, body.color),
+        )
+        qid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    audit(uid, "queue_enqueue", {"printer_id": pid, "queue_id": qid})
+    return {"ok": True, "id": qid}
+
+@app.post("/api/queue/{qid}/cancel")
+def queue_cancel(qid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        con.execute(
+            "UPDATE print_queue SET status='canceled', finished_at=? WHERE user_id=? AND id=? AND status IN ('queued','paused')",
+            (now_ts(), uid, qid),
+        )
+    audit(uid, "queue_cancel", {"queue_id": qid})
+    return {"ok": True}
+
+@app.post("/api/printers/{pid}/queue/{qid}/move")
+def queue_move(pid: int, qid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    direction = (body.get("direction") or "").lower()
+    if direction not in ("up", "down"):
+        raise HTTPException(400, "direction must be up/down")
+
+    with db() as con:
+        row = con.execute(
+            "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND id=? AND status='queued'",
+            (uid, pid, qid),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Queue item not found")
+
+        if direction == "up":
+            nb = con.execute(
+                "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' AND id<? ORDER BY id DESC LIMIT 1",
+                (uid, pid, qid),
+            ).fetchone()
+        else:
+            nb = con.execute(
+                "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' AND id>? ORDER BY id ASC LIMIT 1",
+                (uid, pid, qid),
+            ).fetchone()
+        if not nb:
+            return {"ok": True, "moved": False}
+
+        # swap primary key via temp id
+        a = int(qid)
+        b = int(nb["id"])
+        tmp = 10_000_000 + a
+        con.execute("UPDATE print_queue SET id=? WHERE id=?", (tmp, a))
+        con.execute("UPDATE print_queue SET id=? WHERE id=?", (a, b))
+        con.execute("UPDATE print_queue SET id=? WHERE id=?", (b, tmp))
+
+    audit(uid, "queue_move", {"printer_id": pid, "queue_id": qid, "direction": direction})
+    return {"ok": True, "moved": True}
+
+# ----------------------------
+# Print control (Variant A: ручной запуск)
+# ----------------------------
+def _fmt_h(sec: int) -> str:
+    sec = max(0, int(sec or 0))
+    h = sec // 3600
+    m = (sec % 3600) // 60
+    if h > 0:
+        return f"{h}ч {m}м"
+    return f"{m}м"
+
+def _finish_job(con: sqlite3.Connection, uid: int, pid: int, status: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
+    if not p:
+        raise HTTPException(404, "Printer not found")
+    qid = p["current_queue_id"]
+    if not qid:
+        raise HTTPException(400, "No current job")
+
+    q = con.execute("SELECT * FROM print_queue WHERE id=? AND user_id=?", (int(qid), uid)).fetchone()
+    if not q:
+        raise HTTPException(400, "Job not found")
+
+    con.execute("UPDATE print_queue SET status=?, finished_at=? WHERE id=?", (status, now_ts(), int(qid)))
+    con.execute("UPDATE printers SET status='idle', current_queue_id=NULL, started_at=NULL, updated_at=datetime('now') WHERE id=?", (pid,))
+
+    # order progress on done
+    if status == "done" and q["order_id"]:
+        m = con.execute("SELECT pieces_per_print FROM models WHERE user_id=? AND id=?", (uid, int(q["model_id"]))).fetchone()
+        ppp = int(m["pieces_per_print"] if m and m["pieces_per_print"] else 1)
+        done_add = int(q["qty"] or 1) * ppp
+
+        con.execute(
+            "UPDATE orders SET done_qty=done_qty+?, updated_at=datetime('now') WHERE user_id=? AND id=?",
+            (done_add, uid, int(q["order_id"])),
+        )
+        con.execute(
+            "UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=? AND done_qty>=total_qty AND status='open'",
+            (uid, int(q["order_id"])),
+        )
+
+    return dict(p), dict(q)
+
+@app.post("/api/printers/{pid}/print/start")
+def print_start(pid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
+        if not p:
+            raise HTTPException(404, "Printer not found")
+        if p["status"] in ("printing", "paused"):
+            raise HTTPException(400, "Printer already busy")
+
+        q = con.execute(
+            "SELECT * FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' ORDER BY id ASC LIMIT 1",
+            (uid, pid),
+        ).fetchone()
+        if not q:
+            raise HTTPException(400, "Queue is empty")
+
+        con.execute("UPDATE print_queue SET status='printing', started_at=?, paused_at=NULL, paused_elapsed=0 WHERE id=?",
+                    (now_ts(), int(q["id"])))
+        con.execute("UPDATE printers SET status='printing', current_queue_id=?, started_at=?, updated_at=datetime('now') WHERE id=?",
+                    (int(q["id"]), now_ts(), pid))
+
+    audit(uid, "print_start", {"printer_id": pid, "queue_id": int(q["id"])})
+    return {"ok": True, "queue_id": int(q["id"])}
+
+@app.post("/api/printers/{pid}/print/pause")
+def print_pause(pid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
+        if not p:
+            raise HTTPException(404, "Printer not found")
+        if p["status"] != "printing":
+            raise HTTPException(400, "Printer not printing")
+        qid = p["current_queue_id"]
+        if not qid:
+            raise HTTPException(400, "No current job")
+
+        q = con.execute("SELECT * FROM print_queue WHERE id=? AND user_id=?", (int(qid), uid)).fetchone()
+        if not q or not q["started_at"]:
+            raise HTTPException(400, "Bad job state")
+
+        elapsed = max(0, now_ts() - int(q["started_at"]))
+        con.execute("UPDATE print_queue SET status='paused', paused_at=?, paused_elapsed=? WHERE id=?",
+                    (now_ts(), elapsed, int(qid)))
+        con.execute("UPDATE printers SET status='paused', updated_at=datetime('now') WHERE id=?", (pid,))
+
+    audit(uid, "print_pause", {"printer_id": pid})
+    return {"ok": True}
+
+@app.post("/api/printers/{pid}/print/resume")
+def print_resume(pid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
+        if not p:
+            raise HTTPException(404, "Printer not found")
+        if p["status"] != "paused":
+            raise HTTPException(400, "Printer not paused")
+        qid = p["current_queue_id"]
+        if not qid:
+            raise HTTPException(400, "No current job")
+
+        q = con.execute("SELECT * FROM print_queue WHERE id=? AND user_id=?", (int(qid), uid)).fetchone()
+        if not q:
+            raise HTTPException(400, "Job not found")
+
+        paused_elapsed = int(q["paused_elapsed"] or 0)
+        new_started = now_ts() - paused_elapsed
+        con.execute("UPDATE print_queue SET status='printing', started_at=?, paused_at=NULL WHERE id=?",
+                    (new_started, int(qid)))
+        con.execute("UPDATE printers SET status='printing', started_at=?, updated_at=datetime('now') WHERE id=?",
+                    (new_started, pid))
+
+    audit(uid, "print_resume", {"printer_id": pid})
+    return {"ok": True}
+
+@app.post("/api/printers/{pid}/print/finish")
+def print_finish(pid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        p, q = _finish_job(con, uid, pid, "done")
+    audit(uid, "print_finish", {"printer_id": pid, "queue_id": q.get("id")})
+    asyncio.create_task(_notify_finished(uid, pid, q, ok=True))
+    return {"ok": True}
+
+@app.post("/api/printers/{pid}/print/fail")
+def print_fail(pid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    reason = (body.get("reason") or "Ошибка").strip()
+    with db() as con:
+        p, q = _finish_job(con, uid, pid, "failed")
+        con.execute("UPDATE printers SET status='error', repair_note=?, updated_at=datetime('now') WHERE user_id=? AND id=?",
+                    (reason, uid, pid))
+    audit(uid, "print_fail", {"printer_id": pid, "queue_id": q.get("id"), "reason": reason})
+    asyncio.create_task(_notify_finished(uid, pid, q, ok=False, reason=reason))
+    return {"ok": True}
+
+# ----------------------------
+# Suggestions engine
+# ----------------------------
+def _horizon_sec() -> int:
+    if not is_night_now():
+        return 4 * 3600
+    nowb = berlin_now()
+    target = nowb.replace(hour=8, minute=0, second=0, microsecond=0)
+    if target <= nowb:
+        target = target + datetime.timedelta(days=1)
+    sec = int((target - nowb).total_seconds())
+    return max(2 * 3600, min(sec, 12 * 3600))
+
+def build_suggestions(uid: int, pid: int) -> List[Dict[str, Any]]:
+    horizon = _horizon_sec()
+    suggestions: List[Dict[str, Any]] = []
+
+    with db() as con:
+        models = con.execute(
+            "SELECT id, filename, estimated_sec, pieces_per_print, default_color FROM models WHERE user_id=?",
+            (uid,),
+        ).fetchall()
+        orders = con.execute(
+            "SELECT id, title, total_qty, done_qty FROM orders WHERE user_id=? AND status='open'",
+            (uid,),
+        ).fetchall()
+
+    # 1) варианты "закрыть один заказ"
+    for o in orders:
+        remain = int(o["total_qty"]) - int(o["done_qty"])
+        if remain <= 0:
+            continue
+        best = None
+        for m in models:
+            est = m["estimated_sec"]
+            if not est:
+                continue
+            ppp = int(m["pieces_per_print"] or 1)
+            batches = int(math.ceil(remain / max(ppp, 1)))
+            total_time = int(est) * batches
+            if total_time <= horizon:
+                score = total_time
+                if (best is None) or (score < best["score"]):
+                    best = {
+                        "score": score,
+                        "items": [{
+                            "model_id": int(m["id"]),
+                            "order_id": int(o["id"]),
+                            "qty": batches,
+                            "estimated_sec": int(est),
+                            "color": m["default_color"],
+                        }],
+                        "label": f"Закрыть заказ «{o['title']}»",
+                        "time": total_time,
+                    }
+        if best:
+            suggestions.append({
+                "type": "order_close",
+                "label": best["label"],
+                "time": best["time"],
+                "items": best["items"],
+            })
+
+    # 2) ночная упаковка (2 элемента)
+    combos: List[Dict[str, Any]] = []
+    candidates: List[Dict[str, Any]] = []
+
+    for o in orders:
+        remain = int(o["total_qty"]) - int(o["done_qty"])
+        if remain <= 0:
+            continue
+        for m in models:
+            est = m["estimated_sec"]
+            if not est:
+                continue
+            ppp = int(m["pieces_per_print"] or 1)
+            batches = min(int(math.ceil(remain / max(ppp, 1))), 5)
+            candidates.append({
+                "order_id": int(o["id"]),
+                "model_id": int(m["id"]),
+                "qty": batches,
+                "estimated_sec": int(est),
+                "color": m["default_color"],
+                "time": int(est) * batches,
+            })
+
+    for m in models:
+        est = m["estimated_sec"]
+        if not est:
+            continue
+        candidates.append({
+            "order_id": None,
+            "model_id": int(m["id"]),
+            "qty": 1,
+            "estimated_sec": int(est),
+            "color": m["default_color"],
+            "time": int(est),
         })
-        .slice()
-        .sort((a,b) => safeText(a.name).localeCompare(safeText(b.name), 'ru'));
-    }
 
-    function sortModels(list){
-      const q = state.ui.search;
-      const sort = state.ui.filters.model_sort;
-      let out = list.filter(m => matchesSearch(`${m.filename} ${m.kind}`, q));
-      out = out.slice().sort((a,b) => {
-        if (sort === 'volume_desc') return Number(b.volume_cm3||0) - Number(a.volume_cm3||0);
-        return new Date(b.created_at||0).getTime() - new Date(a.created_at||0).getTime();
-      });
-      return out;
-    }
+    candidates.sort(key=lambda x: x["time"])
 
-    function filterOrders(list){
-      const q = state.ui.search;
-      return list
-        .filter(o => matchesSearch(`${o.id} ${o.status} ${o.title} ${o.note} ${o.catalog_title}`, q))
-        .slice()
-        .sort((a,b) => new Date(b.created_at||0).getTime() - new Date(a.created_at||0).getTime());
-    }
+    for i in range(min(10, len(candidates))):
+        for j in range(i + 1, min(12, len(candidates))):
+            t = candidates[i]["time"] + candidates[j]["time"]
+            if t <= horizon:
+                combos.append({
+                    "type": "pack",
+                    "label": "Заполнить время (комбо)",
+                    "time": t,
+                    "items": [
+                        {k: candidates[i][k] for k in ("model_id", "order_id", "qty", "estimated_sec", "color")},
+                        {k: candidates[j][k] for k in ("model_id", "order_id", "qty", "estimated_sec", "color")},
+                    ]
+                })
+    combos.sort(key=lambda x: abs(horizon - x["time"]))
+    suggestions.extend(combos[:2])
 
-    function renderPrinters(){
-      const root = $('#tab-printers');
-      const u = state.user;
-      const printers = filterPrinters(state.printers);
+    # 3) быстрые модели
+    shorts = []
+    for m in models:
+        est = m["estimated_sec"]
+        if est and int(est) <= horizon:
+            shorts.append({
+                "type": "short",
+                "label": f"Быстрая печать: {m['filename']}",
+                "time": int(est),
+                "items": [{
+                    "model_id": int(m["id"]),
+                    "order_id": None,
+                    "qty": 1,
+                    "estimated_sec": int(est),
+                    "color": m["default_color"],
+                }]
+            })
+    shorts.sort(key=lambda x: x["time"])
+    suggestions.extend(shorts[:2])
 
-      const header = `
-        <div class="pf-card p-4">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <div class="text-base font-semibold">Принтеры</div>
-              <div class="text-xs" style="color: var(--pf-sub);">Пользователь: <span class="font-semibold">${escapeHtml(u.first_name || '—')}</span> · План: <span class="font-semibold">${escapeHtml(u.plan || 'FREE')}</span></div>
-              <div class="text-[11px] mt-1" style="color: var(--pf-sub);">Сервер: <span class="font-semibold">${escapeHtml(fmtDateTime(state.server_time))}</span></div>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="pf-badge">${state.apiOk ? 'API OK' : 'API OFF'}</span>
-              ${u.is_admin ? '<span class="pf-badge" style="background: rgba(255,59,48,.12); border-color: rgba(255,59,48,.22); color:#a61a12;">ADMIN</span>' : ''}
-            </div>
-          </div>
-        </div>
-      `;
+    uniq = []
+    seen = set()
+    for s in suggestions:
+        key = (s["label"], int(s["time"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(s)
 
-      const cards = printers.length ? printers.map(p => {
-        const cur = p.current || null;
-        const title = cur?.title || cur?.catalog_title || (cur?.catalog_id ? ('#'+cur.catalog_id) : '—');
-        const dur = cur?.duration_sec || cur?.estimated_sec || null;
-        const st = safeText(p.status).toLowerCase();
-        let progressPct = null;
-        if (st === 'printing' && cur?.last_start && dur){
-          const t0 = new Date(cur.last_start.replace(' ', 'T')).getTime();
-          const now = Date.now();
-          if (!Number.isNaN(t0)){
-            const elapsed = Math.max(0, (now - t0)/1000);
-            progressPct = Math.max(0, Math.min(100, Math.round((elapsed / Number(dur)) * 100)));
-          }
-        }
-        return `
-          <article class="pf-card p-4">
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <div class="font-semibold truncate">${escapeHtml(p.name || 'Принтер')}</div>
-                <div class="text-xs mt-1" style="color: var(--pf-sub);">Модель: ${escapeHtml(p.model_name || '—')} · Стол: <span class="font-semibold">${escapeHtml(p.bed_x||0)}×${escapeHtml(p.bed_y||0)}×${escapeHtml(p.bed_z||0)}</span> мм</div>
-              </div>
-              ${statusPill(p.status)}
-            </div>
+    return uniq[:5]
 
-            ${cur ? `
-              <div class="mt-3 pf-divider"></div>
-              <div class="mt-3">
-                <div class="text-sm font-semibold truncate">${escapeHtml(title)}</div>
-                <div class="mt-1 text-xs" style="color: var(--pf-sub);">Длительность: <span class="font-semibold">${escapeHtml(dur ? fmtSeconds(dur) : '—')}</span> · Старт: <span class="font-semibold">${escapeHtml(cur.last_start || '—')}</span></div>
-                ${progressPct !== null ? `
-                  <div class="mt-2 h-2 rounded-full" style="background: rgba(0,0,0,.06);">
-                    <div class="h-2 rounded-full" style="width:${progressPct}%; background: linear-gradient(90deg, rgba(47,107,255,.85), rgba(6,182,212,.85));"></div>
-                  </div>
-                  <div class="mt-1 text-[11px]" style="color: var(--pf-sub);">Прогресс: <span class="font-semibold">${progressPct}%</span></div>
-                ` : ''}
-              </div>
-            ` : `
-              <div class="mt-3 text-xs" style="color: var(--pf-sub);">Сейчас ничего не печатается.</div>
-            `}
-          </article>
-        `;
-      }).join('') : `
-        <div class="pf-card p-4">
-          <div class="text-sm font-semibold">Нет принтеров</div>
-          <div class="text-xs text-gray-500 mt-1">Если это неожиданно — проверьте данные в /api/bootstrap.</div>
-        </div>
-      `;
+SUGGESTION_CACHE: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
 
-      root.innerHTML = `<div class="space-y-3">${header}${cards}</div>`;
-    }
+@app.get("/api/printers/{pid}/suggestions")
+def api_suggestions(pid: int, user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    sugg = build_suggestions(uid, pid)
+    SUGGESTION_CACHE[(uid, pid)] = sugg
+    audit(uid, "suggestions_build", {"printer_id": pid, "count": len(sugg)})
+    return sugg
 
-    function renderWork(){
-      const root = $('#tab-work');
-      const orders = filterOrders(state.orders);
-      const models = sortModels(state.models);
-      const ordersFirst = Boolean(state.ui.filters.ordersFirst);
+@app.post("/api/printers/{pid}/suggestions/apply")
+def api_suggestions_apply(pid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    idx = int(body.get("index") or -1)
+    key = (uid, pid)
+    if key not in SUGGESTION_CACHE:
+        SUGGESTION_CACHE[key] = build_suggestions(uid, pid)
+    sugg = SUGGESTION_CACHE[key]
+    if idx < 0 or idx >= len(sugg):
+        raise HTTPException(400, "Bad index")
 
-      const ordersHtml = orders.length ? orders.map(o => {
-        const st = safeText(o.status || 'open').toLowerCase();
-        const badge = st === 'done' ? 'pf-pill--good' : 'pf-pill--info';
-        return `
-          <article class="pf-card p-4">
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <div class="font-semibold">Заказ #${escapeHtml(o.id)}</div>
-                <div class="text-xs mt-1" style="color: var(--pf-sub);">Модель: <span class="font-semibold">${escapeHtml(o.catalog_title || o.title || '—')}</span></div>
-              </div>
-              <span class="pf-pill ${badge}">${escapeHtml(st.toUpperCase())}</span>
-            </div>
-            <div class="mt-2 text-xs" style="color: var(--pf-sub);">
-              <div class="flex items-center justify-between"><span>Создан</span><span class="font-semibold">${escapeHtml(fmtDateTime(o.created_at))}</span></div>
-              <div class="flex items-center justify-between"><span>Готово</span><span class="font-semibold">${escapeHtml(o.done_qty ?? '—')}/${escapeHtml(o.total_qty ?? '—')}</span></div>
-            </div>
-          </article>
-        `;
-      }).join('') : `<div class="pf-card p-4"><div class="text-sm text-gray-500">Пока нет заказов.</div></div>`;
+    plan = sugg[idx]
+    created_ids = []
+    with db() as con:
+        for item in plan["items"]:
+            est_total = int(item["estimated_sec"]) * int(item["qty"])
+            con.execute(
+                """
+                INSERT INTO print_queue(user_id, printer_id, model_id, order_id, qty, status, estimated_sec, color)
+                VALUES(?,?,?,?,?,'queued',?,?)
+                """,
+                (uid, pid, int(item["model_id"]), item.get("order_id"), int(item["qty"]), est_total, item.get("color")),
+            )
+            qid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            created_ids.append(int(qid))
 
-      const modelsHtml = models.length ? models.map(m => {
-        return `
-          <article class="pf-card p-4">
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <div class="font-semibold truncate">${escapeHtml(m.filename || ('Модель #'+m.id))}</div>
-                <div class="text-xs mt-1" style="color: var(--pf-sub);">Тип: ${escapeHtml(String(m.kind||'').toUpperCase())} · Размер: <span class="font-semibold">${escapeHtml(m.size_x||0)}×${escapeHtml(m.size_y||0)}×${escapeHtml(m.size_z||0)}</span> мм</div>
-              </div>
-              <span class="pf-pill pf-pill--info">${escapeHtml(String(m.kind||'file').toUpperCase())}</span>
-            </div>
-            <div class="mt-2 text-xs" style="color: var(--pf-sub);">
-              <div class="flex items-center justify-between"><span>Объём</span><span class="font-semibold">${escapeHtml(m.volume_cm3 ?? '—')} см³</span></div>
-              <div class="flex items-center justify-between"><span>Время</span><span class="font-semibold">${escapeHtml(m.estimated_sec ? fmtSeconds(m.estimated_sec) : '—')}</span></div>
-              <div class="flex items-center justify-between"><span>Филамент</span><span class="font-semibold">${escapeHtml(m.filament_mm ?? '—')} мм</span></div>
-            </div>
-          </article>
-        `;
-      }).join('') : `<div class="pf-card p-4"><div class="text-sm text-gray-500">Нет загруженных моделей.</div></div>`;
+    audit(uid, "suggestions_apply", {"printer_id": pid, "index": idx, "queue_ids": created_ids})
+    return {"ok": True, "queue_ids": created_ids}
 
-      const block = (title, hint, content) => `
-        <div class="pf-card p-4">
-          <div class="flex items-center justify-between">
-            <div class="text-base font-semibold">${escapeHtml(title)}</div>
-            <div class="text-xs" style="color: var(--pf-sub);">${escapeHtml(hint||'')}</div>
-          </div>
-        </div>
-        <div class="space-y-3">${content}</div>
-      `;
+# ----------------------------
+# Dashboard API (mini-app)
+# ----------------------------
+@app.get("/api/dashboard")
+def api_dashboard(user=Depends(telegram_auth)):
+    uid = int(user["id"])
+    with db() as con:
+        printers = con.execute(
+            "SELECT id, display_no, name, status, repair_note, active_color, current_queue_id, started_at, image_url FROM printers WHERE user_id=? ORDER BY COALESCE(display_no,id)",
+            (uid,),
+        ).fetchall()
+        qrows = con.execute(
+            """
+            SELECT q.id, q.printer_id, q.model_id, q.status, q.estimated_sec, q.started_at, m.filename AS model_name
+            FROM print_queue q
+            JOIN models m ON m.id=q.model_id
+            WHERE q.user_id=? AND q.status IN ('printing','paused')
+            """,
+            (uid,),
+        ).fetchall()
+        qmap = {int(q["printer_id"]): dict(q) for q in qrows}
 
-      root.innerHTML = `<div class="space-y-3">${ordersFirst ? (block('Заказы','Новая таблица orders',ordersHtml)+block('Модели','STL / G‑CODE',modelsHtml)) : (block('Модели','STL / G‑CODE',modelsHtml)+block('Заказы','Новая таблица orders',ordersHtml))}</div>`;
-    }
+    out = []
+    for p in printers:
+        pd = dict(p)
+        q = qmap.get(int(p["id"]))
+        if q and q.get("started_at") and q.get("estimated_sec"):
+            elapsed = max(0, now_ts() - int(q["started_at"]))
+            pct = int(min(100, (elapsed / max(1, int(q["estimated_sec"]))) * 100))
+            pd["current"] = {
+                "queue_id": q["id"],
+                "model_name": q["model_name"],
+                "progress": pct,
+                "elapsed_sec": elapsed,
+                "remaining_sec": max(0, int(q["estimated_sec"]) - elapsed),
+                "status": q["status"],
+            }
+        else:
+            pd["current"] = None
+        out.append(pd)
+    return out
 
-    function renderProfile(){
-      const root = $('#tab-profile');
-      const u = state.user;
-      const initData = getTgInitData();
+# ----------------------------
+# Pillow cards (finished/failed)
+# ----------------------------
+def _render_event_card(title: str, lines: List[str], accent: str) -> bytes:
+    w, h = 900, 420
+    img = Image.new("RGB", (w, h), "#0b1220")
+    d = ImageDraw.Draw(img)
 
-      const avatar = u.photo_url
-        ? `<img src="${escapeHtml(u.photo_url)}" alt="Аватар" class="h-16 w-16 rounded-full object-cover" />`
-        : `<div class="h-16 w-16 rounded-full" style="background: linear-gradient(135deg, rgba(47,107,255,.25), rgba(124,58,237,.25)); display:grid; place-items:center;"><div class="text-xl font-bold" style="color: rgba(17,24,39,.7);">PF</div></div>`;
+    d.rectangle((0, 0, w, 96), fill=accent)
 
-      const printersUsed = state.printers.length;
-      const printersLimit = Math.max(1, Number(u.limit_printers || 1));
-      const printersPct = Math.max(0, Math.min(100, Math.round((printersUsed / printersLimit) * 100)));
+    ft = font_bold(40)
+    fs = font_regular(26)
+    fsm = font_regular(22)
 
-      const modelsUsed = state.models.length;
-      const modelsLimit = Math.max(modelsUsed, Number(u.limit_models || 0) || 0) || modelsUsed || 1;
-      const modelsPct = modelsLimit ? Math.max(0, Math.min(100, Math.round((modelsUsed / modelsLimit) * 100))) : 0;
+    d.text((32, 22), title, font=ft, fill="white")
+    y = 130
+    for ln in lines[:6]:
+        d.text((32, y), ln, font=fs, fill="#e5e7eb")
+        y += 44
 
-      const quotaBar = (label, used, limit, pct, tone='info') => {
-        const fill = tone === 'good'
-          ? 'linear-gradient(90deg, rgba(0,200,83,.85), rgba(6,182,212,.65))'
-          : 'linear-gradient(90deg, rgba(47,107,255,.85), rgba(6,182,212,.75))';
-        return `
-          <div class="pf-card p-3" style="box-shadow:none; border: 1px solid rgba(0,0,0,.06); background: rgba(0,0,0,.02);">
-            <div class="flex items-center justify-between">
-              <div class="text-xs font-semibold" style="color: var(--pf-sub);">${escapeHtml(label)}</div>
-              <div class="text-xs font-semibold">${escapeHtml(used)}/${escapeHtml(limit)}</div>
-            </div>
-            <div class="mt-2 h-2 rounded-full" style="background: rgba(0,0,0,.06);">
-              <div class="h-2 rounded-full" style="width:${pct}%; background: ${fill};"></div>
-            </div>
-          </div>
-        `;
-      };
+    d.text((32, h - 52), "Откройте предложения и запустите следующую печать", font=fsm, fill="#93c5fd")
 
-      const adminPanel = u.is_admin ? `
-        <div class="pf-card p-4">
-          <div class="flex items-center justify-between">
-            <div class="text-sm font-semibold">Админ‑панель</div>
-            <span class="pf-badge" style="background: rgba(255,59,48,.12); border-color: rgba(255,59,48,.22); color:#a61a12;">ADMIN</span>
-          </div>
-          <div class="mt-2 text-xs" style="color: var(--pf-sub);">Создание промокодов, выдача/снятие подписок, бан/разбан пользователей.</div>
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
-          <div class="mt-3 grid gap-3">
-            <div class="pf-card p-3" style="box-shadow:none; border: 1px solid rgba(0,0,0,.06);">
-              <div class="text-xs font-semibold" style="color: var(--pf-sub);">Промокоды</div>
-              <div class="mt-2 grid grid-cols-2 gap-2">
-                <input id="adminPromoCode" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Код (например PRINTFARM-2026)" />
-                <select id="adminPromoPlan" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs">
-                  <option value="FREE">FREE</option>
-                  <option value="PRO">PRO</option>
-                  <option value="STUDIO">STUDIO</option>
-                </select>
-                <input id="adminPromoLimit" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Лимит принтеров" value="1" />
-                <input id="adminPromoDays" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Дней (пусто = бессрочно)" />
-              </div>
-              <div class="mt-2 flex items-center justify-between gap-2">
-                <label class="text-xs" style="color: var(--pf-sub);">
-                  <input id="adminPromoSingle" type="checkbox" class="align-middle mr-2" checked />
-                  Одноразовый
-                </label>
-                <button id="adminCreatePromo" class="px-3 py-2 rounded-xl text-xs font-semibold" style="border: 1px solid rgba(47,107,255,.22); background: rgba(47,107,255,.08); color: #1d46aa;">Создать</button>
-              </div>
-            </div>
+async def _notify_finished(uid: int, pid: int, q: Dict[str, Any], ok: bool, reason: str = "") -> None:
+    sugg = build_suggestions(uid, pid)
+    SUGGESTION_CACHE[(uid, pid)] = sugg
 
-            <div class="pf-card p-3" style="box-shadow:none; border: 1px solid rgba(0,0,0,.06);">
-              <div class="text-xs font-semibold" style="color: var(--pf-sub);">Пользователь</div>
-              <div class="mt-2 grid grid-cols-2 gap-2">
-                <input id="adminUserId" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="User ID" />
-                <select id="adminUserPlan" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs">
-                  <option value="FREE">FREE</option>
-                  <option value="PRO">PRO</option>
-                  <option value="STUDIO">STUDIO</option>
-                </select>
-                <input id="adminUserLimit" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Лимит принтеров" value="1" />
-                <input id="adminUserDays" class="rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Дней (пусто = снять дату)" />
-              </div>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <button id="adminSetSub" class="flex-1 px-3 py-2 rounded-xl text-xs font-semibold" style="border: 1px solid rgba(47,107,255,.22); background: rgba(47,107,255,.08); color: #1d46aa;">Выдать/обновить подписку</button>
-                <button id="adminBan" class="px-3 py-2 rounded-xl text-xs font-semibold" style="border: 1px solid rgba(255,59,48,.22); background: rgba(255,59,48,.10); color:#a61a12;">Бан</button>
-                <button id="adminUnban" class="px-3 py-2 rounded-xl text-xs font-semibold" style="border: 1px solid rgba(0,200,83,.22); background: rgba(0,200,83,.10); color:#067a34;">Разбан</button>
-              </div>
-              <div class="mt-2 text-[11px]" style="color: var(--pf-sub);">Требуются backend‑эндпоинты: <code class="px-1 py-[1px] rounded bg-black/5">POST /api/admin/promo/create</code>, <code class="px-1 py-[1px] rounded bg-black/5">POST /api/admin/user/subscription</code>, <code class="px-1 py-[1px] rounded bg-black/5">POST /api/admin/user/ban</code>.</div>
-            </div>
+    model_name = "Модель"
+    order_info = "Заказ: —"
+    with db() as con:
+        m = con.execute("SELECT filename FROM models WHERE user_id=? AND id=?", (uid, int(q["model_id"]))).fetchone()
+        if m:
+            model_name = m["filename"]
+        if q.get("order_id"):
+            o = con.execute("SELECT title, done_qty, total_qty FROM orders WHERE user_id=? AND id=?", (uid, int(q["order_id"]))).fetchone()
+            if o:
+                order_info = f"Заказ: {o['title']} ({o['done_qty']}/{o['total_qty']})"
 
-            <div class="pf-card p-3" style="box-shadow:none; border: 1px solid rgba(0,0,0,.06);">
-              <div class="text-xs font-semibold" style="color: var(--pf-sub);">Последний результат</div>
-              <div class="mt-2 text-xs" style="color: var(--pf-sub);">${escapeHtml(state.admin.lastResult || '—')}</div>
-            </div>
-          </div>
-        </div>
-      ` : '';
+    if ok:
+        img_bytes = _render_event_card(
+            "Печать завершена ✅",
+            [
+                f"Принтер: #{pid}",
+                f"Модель: {model_name}",
+                f"Время: {_fmt_h(int(q.get('estimated_sec') or 0))}",
+                order_info,
+            ],
+            accent="#16a34a",
+        )
+        caption = "Печать завершена. Предлагаю запустить следующую модель."
+    else:
+        img_bytes = _render_event_card(
+            "Печать завершена с ошибкой ❌",
+            [
+                f"Принтер: #{pid}",
+                f"Модель: {model_name}",
+                f"Причина: {reason or 'Ошибка'}",
+                order_info,
+            ],
+            accent="#ef4444",
+        )
+        caption = "Обнаружена ошибка. Вы можете отметить ремонт или запустить другую модель."
 
-      root.innerHTML = `
-        <div class="space-y-3">
-          <div class="pf-card p-4">
-            <div class="flex items-center gap-3">
-              ${avatar}
-              <div class="min-w-0">
-                <div class="text-base font-semibold truncate">${escapeHtml(u.first_name || 'Пользователь')}</div>
-                <div class="text-xs" style="color: var(--pf-sub);">ID: <span class="font-semibold">${escapeHtml(u.id ?? '—')}</span>${u.is_admin ? ' · <span class="font-semibold" style="color:#a61a12">Администратор</span>' : ''}${u.is_banned ? ' · <span class="font-semibold" style="color:#a61a12">BAN</span>' : ''}</div>
-                <div class="mt-2 flex items-center gap-2">
-                  <span class="pf-pill pf-pill--info">План: ${escapeHtml(u.plan || 'FREE')}</span>
-                  <span class="pf-badge">${state.apiOk ? 'API OK' : 'API OFF'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="▶️ Предложения", callback_data=f"sugg_open:{pid}"),
+            InlineKeyboardButton(text="📋 Очередь", callback_data=f"queue_open:{pid}"),
+        ],
+        [
+            InlineKeyboardButton(text="🛠 Ремонт", callback_data=f"printer_repair:{pid}"),
+            InlineKeyboardButton(text="⚙️ Меню принтера", callback_data=f"printer_menu:{pid}"),
+        ]
+    ])
 
-          <div class="pf-card p-4">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-semibold">Тарификация</div>
-              <span class="pf-pill pf-pill--info">Лимит принтеров: ${escapeHtml(printersLimit)}</span>
-            </div>
-            <div class="mt-3 grid grid-cols-2 gap-2">
-              ${quotaBar('Принтеры', printersUsed, printersLimit, printersPct, printersUsed <= printersLimit ? 'good' : 'warn')}
-              ${quotaBar('Модели', modelsUsed, modelsLimit, modelsPct, 'info')}
-            </div>
-          </div>
+    if bot is None:
+        return
 
-          ${adminPanel}
+    try:
+        inp = BufferedInputFile(img_bytes, filename="print_event.png")
+        await bot.send_photo(chat_id=uid, photo=inp, caption=caption, reply_markup=kb)
+    except Exception as e:
+        log.warning("notify failed: %s", e)
 
-          <div class="pf-card p-4">
-            <div class="text-sm font-semibold">initData (для отладки)</div>
-            <div class="mt-2 flex items-center gap-2">
-              <input id="initDataInput" class="w-full rounded-xl bg-black/5 border border-black/10 px-3 py-2 text-xs" placeholder="Подставится автоматически из Telegram WebApp" value="${escapeHtml(initData)}" />
-              <button id="applyInitData" class="rounded-xl px-3 py-2 text-xs" style="background: rgba(0,0,0,.04);">Применить</button>
-            </div>
-            <div class="mt-2 text-[11px]" style="color: var(--pf-sub);">Если мини‑апп открыт в Telegram — initData будет считано автоматически. Иначе вставьте вручную и нажмите «Применить».</div>
-          </div>
+# ----------------------------
+# Worker loop (auto-finish + notify)
+# ----------------------------
+async def worker_loop() -> None:
+    while True:
+        try:
+            await asyncio.sleep(WORKER_TICK_SEC)
+            with db() as con:
+                rows = con.execute(
+                    """
+                    SELECT p.user_id, p.id AS printer_id, p.status, p.current_queue_id
+                    FROM printers p
+                    WHERE p.status IN ('printing','paused','error')
+                    """
+                ).fetchall()
 
-          <div class="pf-card p-4">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-semibold">Диагностика</div>
-              <span class="pf-pill ${state.apiOk ? 'pf-pill--good' : 'pf-pill--bad'}">${state.apiOk ? 'OK' : 'ERROR'}</span>
-            </div>
-            <div class="mt-2 text-xs" style="color: var(--pf-sub);">
-              <div class="flex items-center justify-between"><span>Серверное время</span><span class="font-semibold">${escapeHtml(fmtDateTime(state.server_time))}</span></div>
-              <div class="flex items-center justify-between"><span>Последняя ошибка</span><span class="font-semibold truncate max-w-[12rem]">${escapeHtml(state.debug.lastError || '—')}</span></div>
-              <div class="flex items-center justify-between"><span>Telegram WebApp</span><span class="font-semibold">${escapeHtml(window.Telegram?.WebApp ? 'Да' : 'Нет')}</span></div>
-            </div>
-          </div>
-        </div>
-      `;
+                for r in rows:
+                    uid = int(r["user_id"])
+                    pid = int(r["printer_id"])
+                    if r["status"] != "printing":
+                        continue
+                    qid = r["current_queue_id"]
+                    if not qid:
+                        continue
 
-      $('#applyInitData')?.addEventListener('click', async () => {
-        const v = $('#initDataInput')?.value?.trim() || '';
-        await load(v);
-        renderAll();
-        toast('initData применён.');
-      });
+                    q = con.execute("SELECT * FROM print_queue WHERE id=? AND user_id=?", (int(qid), uid)).fetchone()
+                    if not q or q["status"] != "printing":
+                        continue
 
-      if (u.is_admin){
-        $('#adminCreatePromo')?.addEventListener('click', async () => {
-          const code = ($('#adminPromoCode')?.value || '').trim();
-          const plan = ($('#adminPromoPlan')?.value || 'FREE').trim();
-          const limit = Number(($('#adminPromoLimit')?.value || '1').trim());
-          const daysRaw = ($('#adminPromoDays')?.value || '').trim();
-          const days = daysRaw ? Number(daysRaw) : null;
-          const single = Boolean($('#adminPromoSingle')?.checked);
-          if (!code){ toast('Введите код промокода.'); return; }
-          try{
-            const res = await apiAdmin('/api/admin/promo/create', { code, plan, limit_printers: limit, expires_days: days, is_single_use: single }, $('#initDataInput')?.value?.trim() || initData);
-            state.admin.lastResult = `Промокод создан: ${safeText(res?.code || code)}`;
-            toast('Промокод создан.');
-            renderAll();
-          } catch (e){
-            state.admin.lastResult = safeText(e?.message || e);
-            toast(`Ошибка: ${state.admin.lastResult}`, { ms: 4200 });
-            renderAll();
-          }
-        });
+                    started_at = q["started_at"]
+                    est = q["estimated_sec"]
+                    if not started_at or not est:
+                        continue
 
-        $('#adminSetSub')?.addEventListener('click', async () => {
-          const user_id = Number(($('#adminUserId')?.value || '').trim());
-          const plan = ($('#adminUserPlan')?.value || 'FREE').trim();
-          const limit = Number(($('#adminUserLimit')?.value || '1').trim());
-          const daysRaw = ($('#adminUserDays')?.value || '').trim();
-          const days = daysRaw ? Number(daysRaw) : null;
-          if (!Number.isFinite(user_id) || user_id <= 0){ toast('Введите корректный User ID.'); return; }
-          try{
-            const res = await apiAdmin('/api/admin/user/subscription', { user_id, plan, limit_printers: limit, expires_days: days }, $('#initDataInput')?.value?.trim() || initData);
-            state.admin.lastResult = `Подписка обновлена для ${user_id}: ${safeText(res?.plan || plan)}`;
-            toast('Подписка обновлена.');
-            renderAll();
-          } catch (e){
-            state.admin.lastResult = safeText(e?.message || e);
-            toast(`Ошибка: ${state.admin.lastResult}`, { ms: 4200 });
-            renderAll();
-          }
-        });
+                    elapsed = max(0, now_ts() - int(started_at))
+                    if elapsed >= int(est):
+                        _, q_row = _finish_job(con, uid, pid, "done")
+                        audit(uid, "worker_autofinish", {"printer_id": pid, "queue_id": q_row.get("id")})
+                        asyncio.create_task(_notify_finished(uid, pid, q_row, ok=True))
+        except Exception as e:
+            log.exception("worker_loop error: %s", e)
 
-        const banCommon = async (banned) => {
-          const user_id = Number(($('#adminUserId')?.value || '').trim());
-          if (!Number.isFinite(user_id) || user_id <= 0){ toast('Введите корректный User ID.'); return; }
-          try{
-            await apiAdmin('/api/admin/user/ban', { user_id, banned }, $('#initDataInput')?.value?.trim() || initData);
-            state.admin.lastResult = banned ? `Пользователь ${user_id} забанен.` : `Пользователь ${user_id} разбанен.`;
-            toast(banned ? 'Бан применён.' : 'Разбан применён.');
-            renderAll();
-          } catch (e){
-            state.admin.lastResult = safeText(e?.message || e);
-            toast(`Ошибка: ${state.admin.lastResult}`, { ms: 4200 });
-            renderAll();
-          }
-        };
+# ============================================================
+# BOT (aiogram v3): handlers — ТОЛЬКО "Вы"
+# ============================================================
 
-        $('#adminBan')?.addEventListener('click', () => banCommon(true));
-        $('#adminUnban')?.addEventListener('click', () => banCommon(false));
-      }
-    }
+@router.message(Command("start"))
+async def cmd_start(msg: Message):
+    uid = msg.from_user.id
+    first = msg.from_user.first_name or "Пользователь"
+    is_admin_from_env = int(uid in ADMIN_IDS)
 
-    function renderAll(){
-      $('#loading')?.classList.add('hidden');
-      $('#tab-printers')?.classList.toggle('hidden', state.ui.activeTab !== 'printers');
-      $('#tab-work')?.classList.toggle('hidden', state.ui.activeTab !== 'work');
-      $('#tab-profile')?.classList.toggle('hidden', state.ui.activeTab !== 'profile');
+    with db() as con:
+        con.execute(
+            """
+            INSERT INTO users(id, first_name, is_admin, role, updated_at)
+            VALUES(?,?,?,?,datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+                first_name=excluded.first_name,
+                is_admin=(users.is_admin OR excluded.is_admin),
+                updated_at=datetime('now')
+            """,
+            (uid, first, is_admin_from_env, "admin" if is_admin_from_env else "operator"),
+        )
+    audit(uid, "bot_start", {})
 
-      if (state.ui.activeTab === 'printers') renderPrinters();
-      if (state.ui.activeTab === 'work') renderWork();
-      if (state.ui.activeTab === 'profile') renderProfile();
+    await msg.answer(
+        "PrintFarm OS: бот подключён.\n"
+        "Доступные команды:\n"
+        "/printers — принтеры\n"
+        "/orders — заказы\n"
+        "/models — модели\n"
+        "/admin — админ-панель\n"
+        "/claim_admin <secret> — выдать права администратора"
+    )
 
-      const sub = state.apiOk
-        ? `Данные синхронизированы · План: ${safeText(state.user.plan || 'FREE')}`
-        : 'Нет связи с сервером';
-      $('#subtitle').textContent = sub;
-    }
+@router.message(Command("claim_admin"))
+async def cmd_claim_admin(msg: Message):
+    secret = (msg.text or "").split(maxsplit=1)
+    secret = secret[1].strip() if len(secret) > 1 else ""
+    if not secret or secret != ADMIN_SECRET:
+        await msg.answer("Секретный код неверный.")
+        return
 
-    function setTab(tab){
-      state.ui.activeTab = tab;
-      $$('.pf-tab-btn').forEach(b => {
-        const is = b.getAttribute('data-tab') === tab;
-        b.setAttribute('aria-selected', is ? 'true' : 'false');
-      });
-      renderAll();
-    }
+    uid = msg.from_user.id
+    with db() as con:
+        con.execute("UPDATE users SET is_admin=1, role='admin', updated_at=datetime('now') WHERE id=?", (uid,))
+    audit(uid, "bot_claim_admin", {})
+    await msg.answer("✅ Права администратора активированы.")
 
-    function openFilter(open){
-      const m = $('#filterModal');
-      if (!m) return;
-      m.dataset.open = open ? 'true' : 'false';
-      if (open) $('#ordersFirst').checked = Boolean(state.ui.filters.ordersFirst);
-    }
+@router.message(Command("admin"))
+async def cmd_admin(msg: Message):
+    uid = msg.from_user.id
+    if not _is_admin(uid):
+        await msg.answer("У Вас нет прав администратора.")
+        return
 
-    function bindUI(){
-      $$('.pf-tab-btn').forEach(btn => btn.addEventListener('click', () => setTab(btn.getAttribute('data-tab'))));
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🖨 Принтеры", callback_data="admin_printers"),
+            InlineKeyboardButton(text="📦 Заказы", callback_data="admin_orders"),
+        ],
+        [
+            InlineKeyboardButton(text="📁 Модели", callback_data="admin_models"),
+            InlineKeyboardButton(text="🧾 Аудит (10)", callback_data="admin_audit"),
+        ],
+    ])
+    await msg.answer("Админ-панель:", reply_markup=kb)
 
-      const si = $('#searchInput');
-      si?.addEventListener('input', () => { state.ui.search = safeText(si.value); renderAll(); });
-      $('#clearSearch')?.addEventListener('click', () => { state.ui.search=''; if (si) si.value=''; renderAll(); });
+@router.message(Command("printers"))
+async def cmd_printers(msg: Message):
+    uid = msg.from_user.id
+    with db() as con:
+        ps = con.execute(
+            "SELECT id, display_no, name, status FROM printers WHERE user_id=? ORDER BY COALESCE(display_no,id)",
+            (uid,),
+        ).fetchall()
 
-      $('#refreshBtn')?.addEventListener('click', async () => {
-        toast('Обновляю…');
-        $('#loading')?.classList.remove('hidden');
-        try { await load(getTgInitData()); }
-        finally { renderAll(); }
-      });
+    if not ps:
+        await msg.answer("Принтеров нет. Добавьте принтер в мини-приложении.")
+        return
 
-      $('#filterBtn')?.addEventListener('click', () => openFilter(true));
-      $('#closeFilter')?.addEventListener('click', () => openFilter(false));
-      $('#filterModal')?.addEventListener('click', (e) => { if (e.target?.id === 'filterModal') openFilter(false); });
+    lines = ["Ваши принтеры:"]
+    kb_rows = []
+    for p in ps[:40]:
+        pid = int(p["id"])
+        no = p["display_no"] or pid
+        nm = p["name"] or "Принтер"
+        st = p["status"] or "idle"
+        lines.append(f"• #{no} — {nm} ({st})")
+        kb_rows.append([
+            InlineKeyboardButton(text=f"⚙️ #{no}", callback_data=f"printer_menu:{pid}"),
+            InlineKeyboardButton(text="▶️ Старт", callback_data=f"printer_start_next:{pid}"),
+        ])
 
-      $('#filterModal')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-filter]');
-        if (!btn) return;
-        const filter = btn.getAttribute('data-filter');
-        const value = btn.getAttribute('data-value');
-        if (filter === 'printer_state') state.ui.filters.printer_state = value;
-        if (filter === 'model_sort') state.ui.filters.model_sort = value;
-        toast('Фильтр выбран. Нажмите «Применить».', { ms: 1400 });
-      });
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
+    await msg.answer("\n".join(lines), reply_markup=kb)
 
-      $('#applyFilters')?.addEventListener('click', () => {
-        state.ui.filters.ordersFirst = Boolean($('#ordersFirst')?.checked);
-        openFilter(false);
-        renderAll();
-        toast('Фильтры применены.');
-      });
+@router.message(Command("orders"))
+async def cmd_orders(msg: Message):
+    uid = msg.from_user.id
+    with db() as con:
+        rows = con.execute(
+            "SELECT id, title, done_qty, total_qty, status FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 20",
+            (uid,),
+        ).fetchall()
 
-      $('#resetFilters')?.addEventListener('click', () => {
-        state.ui.filters = { printer_state: 'all', model_sort: 'new', ordersFirst: true };
-        if ($('#ordersFirst')) $('#ordersFirst').checked = true;
-        openFilter(false);
-        renderAll();
-        toast('Фильтры сброшены.');
-      });
+    if not rows:
+        await msg.answer("Заказов нет.")
+        return
 
-      window.addEventListener('keydown', (e) => { if (e.key === 'Escape') openFilter(false); });
-    }
+    lines = ["Ваши заказы:"]
+    kb_rows = []
+    for r in rows:
+        oid = int(r["id"])
+        lines.append(f"• #{oid} {r['title']} — {r['done_qty']}/{r['total_qty']} ({r['status']})")
+        if r["status"] == "open":
+            kb_rows.append([
+                InlineKeyboardButton(text=f"✅ Закрыть #{oid}", callback_data=f"order_close:{oid}"),
+                InlineKeyboardButton(text=f"+1 к #{oid}", callback_data=f"order_inc:{oid}:1"),
+            ])
 
-    async function load(initData){
-      state.debug.lastError = null;
-      try{
-        const payload = await apiBootstrap(initData);
-        state.apiOk = true;
-        $('#banner')?.classList.add('hidden');
-        normalizeFromBackend(payload);
-      } catch (e){
-        state.apiOk = false;
-        state.debug.lastError = safeText(e?.message || e);
-        $('#banner')?.classList.remove('hidden');
-        const u = getTelegramUserUnsafe();
-        if (u && !state.user.id){ state.user.id = u.id; state.user.first_name = u.first_name; state.user.photo_url = u.photo_url || state.user.photo_url; }
-      }
-    }
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows) if kb_rows else None
+    await msg.answer("\n".join(lines), reply_markup=kb)
 
-    async function init(){
-      applyTelegramChrome();
-      bindUI();
-      document.title = `PrintFarm v${APP_VERSION}`;
+@router.message(Command("models"))
+async def cmd_models(msg: Message):
+    uid = msg.from_user.id
+    with db() as con:
+        rows = con.execute(
+            "SELECT id, filename, estimated_sec, pieces_per_print FROM models WHERE user_id=? ORDER BY id DESC LIMIT 25",
+            (uid,),
+        ).fetchall()
+    if not rows:
+        await msg.answer("Моделей нет.")
+        return
 
-      $('#loading')?.classList.remove('hidden');
-      await load(getTgInitData());
-      renderAll();
-      toast(state.apiOk ? 'Подключение к серверу установлено.' : 'Не удалось подключиться к API.', { ms: 2800 });
-    }
+    lines = ["Ваши модели:"]
+    for r in rows:
+        lines.append(f"• #{r['id']} {r['filename']} — {_fmt_h(r['estimated_sec'] or 0)} / x{r['pieces_per_print'] or 1}")
+    await msg.answer("\n".join(lines))
 
-    init();
-  </script>
-</body>
-</html>
+# ----------------------------
+# BOT callbacks: admin
+# ----------------------------
+@router.callback_query(F.data == "admin_printers")
+async def cb_admin_printers(cb: CallbackQuery):
+    uid = cb.from_user.id
+    if not _is_admin(uid):
+        await cb.answer("Нет доступа", show_alert=True)
+        return
+
+    with db() as con:
+        rows = con.execute(
+            "SELECT id, display_no, name, status FROM printers WHERE user_id=? ORDER BY COALESCE(display_no,id)",
+            (uid,),
+        ).fetchall()
+
+    lines = ["Принтеры:"]
+    kb_rows = []
+    for r in rows[:50]:
+        pid = int(r["id"])
+        no = r["display_no"] or pid
+        lines.append(f"• #{no} {r['name'] or ''} — {r['status']}")
+        kb_rows.append([
+            InlineKeyboardButton(text=f"⚙️ #{no}", callback_data=f"printer_menu:{pid}"),
+            InlineKeyboardButton(text="📋 Очередь", callback_data=f"queue_open:{pid}"),
+        ])
+    await cb.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
+    await cb.answer()
+
+@router.callback_query(F.data == "admin_orders")
+async def cb_admin_orders(cb: CallbackQuery):
+    uid = cb.from_user.id
+    if not _is_admin(uid):
+        await cb.answer("Нет доступа", show_alert=True)
+        return
+
+    with db() as con:
+        rows = con.execute(
+            "SELECT id, title, done_qty, total_qty, status FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 30",
+            (uid,),
+        ).fetchall()
+
+    lines = ["Заказы:"]
+    kb_rows = []
+    for r in rows:
+        oid = int(r["id"])
+        lines.append(f"• #{oid} {r['title']} — {r['done_qty']}/{r['total_qty']} ({r['status']})")
+        if r["status"] == "open":
+            kb_rows.append([
+                InlineKeyboardButton(text=f"✅ Закрыть #{oid}", callback_data=f"order_close:{oid}"),
+                InlineKeyboardButton(text=f"+1 к #{oid}", callback_data=f"order_inc:{oid}:1"),
+            ])
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows) if kb_rows else None
+    await cb.message.answer("\n".join(lines), reply_markup=kb)
+    await cb.answer()
+
+@router.callback_query(F.data == "admin_models")
+async def cb_admin_models(cb: CallbackQuery):
+    uid = cb.from_user.id
+    if not _is_admin(uid):
+        await cb.answer("Нет доступа", show_alert=True)
+        return
+
+    with db() as con:
+        rows = con.execute(
+            "SELECT id, filename, estimated_sec, pieces_per_print FROM models WHERE user_id=? ORDER BY id DESC LIMIT 30",
+            (uid,),
+        ).fetchall()
+
+    lines = ["Модели:"]
+    for r in rows:
+        lines.append(f"• #{r['id']} {r['filename']} — {_fmt_h(r['estimated_sec'] or 0)} / x{r['pieces_per_print'] or 1}")
+
+    await cb.message.answer("\n".join(lines))
+    await cb.answer()
+
+@router.callback_query(F.data == "admin_audit")
+async def cb_admin_audit(cb: CallbackQuery):
+    uid = cb.from_user.id
+    if not _is_admin(uid):
+        await cb.answer("Нет доступа", show_alert=True)
+        return
+
+    with db() as con:
+        rows = con.execute(
+            "SELECT action, payload_json, created_at FROM audit_log WHERE user_id=? ORDER BY id DESC LIMIT 10",
+            (uid,),
+        ).fetchall()
+
+    lines = ["Аудит (последние 10):"]
+    for r in rows:
+        lines.append(f"- {r['created_at']} — {r['action']} — {r['payload_json']}")
+    await cb.message.answer("\n".join(lines))
+    await cb.answer()
+
+# ----------------------------
+# BOT callbacks: printer menu / queue / suggestions / orders
+# ----------------------------
+@router.callback_query(F.data.startswith("printer_menu:"))
+async def cb_printer_menu(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
+    if not p:
+        await cb.answer("Принтер не найден", show_alert=True)
+        return
+
+    no = p["display_no"] or pid
+    st = p["status"] or "idle"
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="▶️ Старт (из очереди)", callback_data=f"printer_start_next:{pid}"),
+            InlineKeyboardButton(text="📋 Очередь", callback_data=f"queue_open:{pid}"),
+        ],
+        [
+            InlineKeyboardButton(text="💡 Предложения", callback_data=f"sugg_open:{pid}"),
+            InlineKeyboardButton(text="🛠 Ремонт", callback_data=f"printer_repair:{pid}"),
+        ],
+        [
+            InlineKeyboardButton(text="⏸ Пауза", callback_data=f"printer_pause:{pid}"),
+            InlineKeyboardButton(text="▶️ Продолжить", callback_data=f"printer_resume:{pid}"),
+        ],
+        [
+            InlineKeyboardButton(text="✅ Завершить", callback_data=f"printer_finish:{pid}"),
+            InlineKeyboardButton(text="❌ Ошибка", callback_data=f"printer_fail:{pid}"),
+        ],
+    ])
+
+    await cb.message.answer(f"Принтер #{no}. Текущий статус: {st}.", reply_markup=kb)
+    await cb.answer()
+
+@router.callback_query(F.data.startswith("printer_start_next:"))
+async def cb_printer_start_next(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
+        if not p:
+            await cb.answer("Принтер не найден", show_alert=True)
+            return
+        if (p["status"] or "") in ("printing", "paused"):
+            await cb.answer("Принтер занят.", show_alert=True)
+            return
+
+        q = con.execute(
+            "SELECT * FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' ORDER BY id ASC LIMIT 1",
+            (uid, pid),
+        ).fetchone()
+        if not q:
+            await cb.answer("Очередь пуста.", show_alert=True)
+            return
+
+        con.execute("UPDATE print_queue SET status='printing', started_at=?, paused_at=NULL, paused_elapsed=0 WHERE id=?",
+                    (now_ts(), int(q["id"])))
+        con.execute("UPDATE printers SET status='printing', current_queue_id=?, started_at=?, updated_at=datetime('now') WHERE id=?",
+                    (int(q["id"]), now_ts(), pid))
+
+    audit(uid, "bot_print_start", {"printer_id": pid, "queue_id": int(q["id"])})
+    await cb.answer("Запуск выполнен.")
+    await cb.message.answer(f"Печать запущена на принтере #{pid}.")
+
+@router.callback_query(F.data.startswith("printer_pause:"))
+async def cb_printer_pause(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
+        if not p or (p["status"] or "") != "printing" or not p["current_queue_id"]:
+            await cb.answer("Невозможно поставить на паузу.", show_alert=True)
+            return
+        q = con.execute("SELECT * FROM print_queue WHERE user_id=? AND id=?", (uid, int(p["current_queue_id"]))).fetchone()
+        if not q or not q["started_at"]:
+            await cb.answer("Состояние задания некорректно.", show_alert=True)
+            return
+
+        elapsed = max(0, now_ts() - int(q["started_at"]))
+        con.execute("UPDATE print_queue SET status='paused', paused_at=?, paused_elapsed=? WHERE id=?",
+                    (now_ts(), elapsed, int(q["id"])))
+        con.execute("UPDATE printers SET status='paused', updated_at=datetime('now') WHERE id=?", (pid,))
+
+    audit(uid, "bot_print_pause", {"printer_id": pid})
+    await cb.answer("Пауза установлена.")
+
+@router.callback_query(F.data.startswith("printer_resume:"))
+async def cb_printer_resume(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
+        if not p or (p["status"] or "") != "paused" or not p["current_queue_id"]:
+            await cb.answer("Невозможно продолжить.", show_alert=True)
+            return
+        q = con.execute("SELECT * FROM print_queue WHERE user_id=? AND id=?", (uid, int(p["current_queue_id"]))).fetchone()
+        if not q:
+            await cb.answer("Задание не найдено.", show_alert=True)
+            return
+
+        paused_elapsed = int(q["paused_elapsed"] or 0)
+        new_started = now_ts() - paused_elapsed
+        con.execute("UPDATE print_queue SET status='printing', started_at=?, paused_at=NULL WHERE id=?",
+                    (new_started, int(q["id"])))
+        con.execute("UPDATE printers SET status='printing', started_at=?, updated_at=datetime('now') WHERE id=?",
+                    (new_started, pid))
+
+    audit(uid, "bot_print_resume", {"printer_id": pid})
+    await cb.answer("Печать продолжена.")
+
+@router.callback_query(F.data.startswith("printer_finish:"))
+async def cb_printer_finish(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        try:
+            _, q = _finish_job(con, uid, pid, "done")
+        except Exception as e:
+            await cb.answer(str(e), show_alert=True)
+            return
+
+    audit(uid, "bot_print_finish", {"printer_id": pid, "queue_id": q.get("id")})
+    asyncio.create_task(_notify_finished(uid, pid, q, ok=True))
+    await cb.answer("Завершено.")
+
+@router.callback_query(F.data.startswith("printer_fail:"))
+async def cb_printer_fail(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+    reason = "Ошибка (отмечено через бота)"
+
+    with db() as con:
+        try:
+            _, q = _finish_job(con, uid, pid, "failed")
+            con.execute("UPDATE printers SET status='error', repair_note=?, updated_at=datetime('now') WHERE user_id=? AND id=?",
+                        (reason, uid, pid))
+        except Exception as e:
+            await cb.answer(str(e), show_alert=True)
+            return
+
+    audit(uid, "bot_print_fail", {"printer_id": pid, "queue_id": q.get("id")})
+    asyncio.create_task(_notify_finished(uid, pid, q, ok=False, reason=reason))
+    await cb.answer("Ошибка отмечена.")
+
+@router.callback_query(F.data.startswith("printer_repair:"))
+async def cb_printer_repair(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        con.execute(
+            "UPDATE printers SET status='repair', repair_note=COALESCE(repair_note,'Требуется обслуживание'), updated_at=datetime('now') WHERE user_id=? AND id=?",
+            (uid, pid),
+        )
+    audit(uid, "bot_printer_repair", {"printer_id": pid})
+    await cb.answer("Принтер переведён в режим ремонта.")
+
+@router.callback_query(F.data.startswith("queue_open:"))
+async def cb_queue_open(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        rows = con.execute(
+            """
+            SELECT q.id, q.status, q.qty, q.estimated_sec, m.filename AS model_name
+            FROM print_queue q
+            JOIN models m ON m.id=q.model_id
+            WHERE q.user_id=? AND q.printer_id=?
+            ORDER BY q.id
+            """,
+            (uid, pid),
+        ).fetchall()
+
+    if not rows:
+        await cb.message.answer("Очередь пуста.")
+        await cb.answer()
+        return
+
+    lines = [f"Очередь принтера #{pid}:"]
+    kb_rows = []
+    for r in rows[:25]:
+        qid = int(r["id"])
+        lines.append(f"• #{qid} {r['model_name']} x{r['qty']} — {_fmt_h(r['estimated_sec'] or 0)} — {r['status']}")
+        if r["status"] == "queued":
+            kb_rows.append([
+                InlineKeyboardButton(text=f"⬆️ {qid}", callback_data=f"queue_move:{pid}:{qid}:up"),
+                InlineKeyboardButton(text=f"⬇️ {qid}", callback_data=f"queue_move:{pid}:{qid}:down"),
+            ])
+            kb_rows.append([
+                InlineKeyboardButton(text=f"🗑 Отменить {qid}", callback_data=f"queue_cancel:{qid}"),
+            ])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows) if kb_rows else None
+    await cb.message.answer("\n".join(lines), reply_markup=kb)
+    await cb.answer()
+
+@router.callback_query(F.data.startswith("queue_cancel:"))
+async def cb_queue_cancel(cb: CallbackQuery):
+    uid = cb.from_user.id
+    qid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        con.execute(
+            "UPDATE print_queue SET status='canceled', finished_at=? WHERE user_id=? AND id=? AND status IN ('queued','paused')",
+            (now_ts(), uid, qid),
+        )
+    audit(uid, "bot_queue_cancel", {"queue_id": qid})
+    await cb.answer("Отменено.")
+
+@router.callback_query(F.data.startswith("queue_move:"))
+async def cb_queue_move(cb: CallbackQuery):
+    uid = cb.from_user.id
+    _, pid, qid, direction = cb.data.split(":")
+    pid = int(pid)
+    qid = int(qid)
+    direction = direction.lower()
+
+    try:
+        with db() as con:
+            if direction == "up":
+                nb = con.execute(
+                    "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' AND id<? ORDER BY id DESC LIMIT 1",
+                    (uid, pid, qid),
+                ).fetchone()
+            else:
+                nb = con.execute(
+                    "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' AND id>? ORDER BY id ASC LIMIT 1",
+                    (uid, pid, qid),
+                ).fetchone()
+            if not nb:
+                await cb.answer("Перемещение недоступно.")
+                return
+
+            a, b = qid, int(nb["id"])
+            tmp = 10_000_000 + a
+            con.execute("UPDATE print_queue SET id=? WHERE id=?", (tmp, a))
+            con.execute("UPDATE print_queue SET id=? WHERE id=?", (a, b))
+            con.execute("UPDATE print_queue SET id=? WHERE id=?", (b, tmp))
+
+        audit(uid, "bot_queue_move", {"printer_id": pid, "queue_id": qid, "direction": direction})
+        await cb.answer("Перемещено.")
+    except Exception as e:
+        await cb.answer(str(e), show_alert=True)
+
+@router.callback_query(F.data.startswith("sugg_open:"))
+async def cb_sugg_open(cb: CallbackQuery):
+    uid = cb.from_user.id
+    pid = int(cb.data.split(":")[1])
+
+    sugg = build_suggestions(uid, pid)
+    SUGGESTION_CACHE[(uid, pid)] = sugg
+
+    if not sugg:
+        await cb.message.answer("Предложений нет.")
+        await cb.answer()
+        return
+
+    lines = [f"Предложения для принтера #{pid}:"]
+    kb_rows = []
+    for i, s in enumerate(sugg):
+        lines.append(f"{i+1}) {s['label']} — {_fmt_h(int(s['time']))}")
+        kb_rows.append([InlineKeyboardButton(text=f"✅ Применить {i+1}", callback_data=f"sugg_apply:{pid}:{i}")])
+
+    await cb.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
+    await cb.answer()
+
+@router.callback_query(F.data.startswith("sugg_apply:"))
+async def cb_sugg_apply(cb: CallbackQuery):
+    uid = cb.from_user.id
+    _, pid, idx = cb.data.split(":")
+    pid = int(pid)
+    idx = int(idx)
+
+    key = (uid, pid)
+    if key not in SUGGESTION_CACHE:
+        SUGGESTION_CACHE[key] = build_suggestions(uid, pid)
+    sugg = SUGGESTION_CACHE[key]
+
+    if idx < 0 or idx >= len(sugg):
+        await cb.answer("Неверный выбор.", show_alert=True)
+        return
+
+    plan = sugg[idx]
+    created = []
+    with db() as con:
+        for item in plan["items"]:
+            est_total = int(item["estimated_sec"]) * int(item["qty"])
+            con.execute(
+                """
+                INSERT INTO print_queue(user_id, printer_id, model_id, order_id, qty, status, estimated_sec, color)
+                VALUES(?,?,?,?,?,'queued',?,?)
+                """,
+                (uid, pid, int(item["model_id"]), item.get("order_id"), int(item["qty"]), est_total, item.get("color")),
+            )
+            qid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            created.append(int(qid))
+
+    audit(uid, "bot_sugg_apply", {"printer_id": pid, "index": idx, "queue_ids": created})
+    await cb.answer("Добавлено в очередь.")
+    await cb.message.answer("План добавлен в очередь. Вы можете запустить печать из меню принтера.")
+
+@router.callback_query(F.data.startswith("order_close:"))
+async def cb_order_close(cb: CallbackQuery):
+    uid = cb.from_user.id
+    oid = int(cb.data.split(":")[1])
+
+    with db() as con:
+        con.execute("UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=?", (uid, oid))
+    audit(uid, "bot_order_close", {"order_id": oid})
+    await cb.answer("Заказ закрыт.")
+
+@router.callback_query(F.data.startswith("order_inc:"))
+async def cb_order_inc(cb: CallbackQuery):
+    uid = cb.from_user.id
+    _, oid, qty = cb.data.split(":")
+    oid = int(oid)
+    qty = int(qty)
+
+    with db() as con:
+        con.execute("UPDATE orders SET done_qty=done_qty+?, updated_at=datetime('now') WHERE user_id=? AND id=?", (qty, uid, oid))
+        con.execute("UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=? AND done_qty>=total_qty AND status='open'",
+                    (uid, oid))
+    audit(uid, "bot_order_inc", {"order_id": oid, "qty": qty})
+    await cb.answer("Обновлено.")
+
+# ============================================================
+# FASTAPI STARTUP / SHUTDOWN
+# ============================================================
+_bot_task: Optional[asyncio.Task] = None
+_worker_task: Optional[asyncio.Task] = None
+
+@app.on_event("startup")
+async def on_startup():
+    global _bot_task, _worker_task
+    init_fonts_best_effort()
+    init_db()
+
+    if _worker_task is None:
+        _worker_task = asyncio.create_task(worker_loop())
+
+    # запуск бота как фоновой задачи (если задан токен)
+    if bot is not None and _bot_task is None:
+        _bot_task = asyncio.create_task(dp.start_polling(bot))
+
+    log.info("Startup complete: worker=%s bot=%s", bool(_worker_task), bool(_bot_task))
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    global _bot_task, _worker_task
+    if _worker_task:
+        _worker_task.cancel()
+    if _bot_task:
+        _bot_task.cancel()
+    log.info("Shutdown complete")
+
+# ============================================================
+# OPTIONAL: run via `python bot.py` (starts uvicorn)
+# На Heroku обычно запускают через Procfile: `web: uvicorn bot:app --host 0.0.0.0 --port $PORT`
+# ============================================================
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("bot:app", host="0.0.0.0", port=port, reload=False)
