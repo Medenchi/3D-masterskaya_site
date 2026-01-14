@@ -1,1957 +1,745 @@
-# ============================================================
-# PrintFarm OS — bot.py (ALL-IN-ONE) — AIROGRAM v3 FIXED
-# FastAPI + Telegram Mini App Auth + aiogram bot + SQLite
-#
-# ВАЖНО:
-# 1) Этот файл рассчитан на aiogram v3 (по Вашей ошибке именно он стоит на хостинге).
-# 2) В боте НЕТ обращений "на ты" — только "Вы/Ваш/Вам".
-# 3) Mini App работает через /api/* и X-Telegram-InitData (проверка подписи).
-# 4) Бот НЕ запускает печать сам — он предлагает, ставит в очередь, сообщает о завершении.
-#    Запуск печати выполняется Вашими действиями в мини-аппе (кнопка Start) или через команды бота.
-# 5) Админка исправлена: is_admin НЕ слетает при апдейте пользователя (OR-логика) + /claim_admin.
-# ============================================================
-
-import os
-import io
-import json
-import time
-import math
-import hmac
-import hashlib
-import asyncio
-import logging
-import sqlite3
-import datetime
-from typing import Any, Dict, List, Optional, Tuple
-
-from fastapi import FastAPI, Request, HTTPException, Depends
-from pydantic import BaseModel
-
-from PIL import Image, ImageDraw, ImageFont
-
-# --- aiogram v3 ---
-from aiogram import Bot, Dispatcher, Router, F
-from aiogram.filters import Command
-from aiogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    BufferedInputFile,
-)
-
-# ----------------------------
-# CONFIG
-# ----------------------------
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("printfarm")
-
-DATABASE = os.getenv("DATABASE", "printfarm.db")
-BOT_TOKEN = os.getenv("BOT_TOKEN", os.getenv("TELEGRAM_BOT_TOKEN", ""))  # must exist for polling + initData verify
-if not BOT_TOKEN:
-    log.warning("BOT_TOKEN is empty. Bot polling + initData verification will fail until you set it.")
-
-ADMIN_SECRET = os.getenv("ADMIN_SECRET", "CHANGE_ME_ADMIN_SECRET")
-ADMIN_IDS = set(int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit())
-
-ASSETS_DIR = os.getenv("ASSETS_DIR", "assets")
-FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
-FONT_REG_PATH = os.path.join(FONTS_DIR, "Inter-Regular.ttf")
-FONT_BOLD_PATH = os.path.join(FONTS_DIR, "Inter-Bold.ttf")
-
-WORKER_TICK_SEC = int(os.getenv("WORKER_TICK_SEC", "10"))
-
-# Europe/Berlin (упрощённо без DST, для логики "ночь/день" достаточно)
-TZ_BERLIN = datetime.timezone(datetime.timedelta(hours=1))
-
-# ----------------------------
-# APP + BOT
-# ----------------------------
-app = FastAPI()
-
-bot = Bot(BOT_TOKEN) if BOT_TOKEN else None  # allow API-only run without token
-dp = Dispatcher()  # ✅ aiogram v3
-router = Router()
-dp.include_router(router)
-
-# ----------------------------
-# DB helpers
-# ----------------------------
-def db() -> sqlite3.Connection:
-    con = sqlite3.connect(DATABASE)
-    con.row_factory = sqlite3.Row
-    return con
-
-def now_ts() -> int:
-    return int(time.time())
-
-def utc_now_iso() -> str:
-    return datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-
-def berlin_now() -> datetime.datetime:
-    return datetime.datetime.now(TZ_BERLIN)
-
-def is_night_now() -> bool:
-    h = berlin_now().hour
-    return h >= 21 or h <= 7
-
-def _ensure_dir(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
-
-def _table_has_column(con: sqlite3.Connection, table: str, col: str) -> bool:
-    rows = con.execute(f"PRAGMA table_info({table})").fetchall()
-    return any(r["name"] == col for r in rows)
-
-def init_fonts_best_effort() -> None:
-    _ensure_dir(FONTS_DIR)
-    if os.path.exists(FONT_REG_PATH) and os.path.exists(FONT_BOLD_PATH):
-        return
-
-    # Best-effort download from GitHub raw (если сеть на хостинге запрещена — просто будет дефолтный шрифт)
-    import urllib.request
-    urls = {
-        FONT_REG_PATH: "https://raw.githubusercontent.com/rsms/inter/master/docs/font-files/Inter-Regular.ttf",
-        FONT_BOLD_PATH: "https://raw.githubusercontent.com/rsms/inter/master/docs/font-files/Inter-Bold.ttf",
-    }
-    for path, url in urls.items():
-        if os.path.exists(path):
-            continue
-        try:
-            with urllib.request.urlopen(url, timeout=8) as r:
-                data = r.read()
-            with open(path, "wb") as f:
-                f.write(data)
-            log.info("Downloaded font: %s", path)
-        except Exception as e:
-            log.warning("Font download failed (%s): %s", url, e)
-
-def font_regular(size: int) -> ImageFont.ImageFont:
-    try:
-        return ImageFont.truetype(FONT_REG_PATH, size)
-    except Exception:
-        return ImageFont.load_default()
-
-def font_bold(size: int) -> ImageFont.ImageFont:
-    try:
-        return ImageFont.truetype(FONT_BOLD_PATH, size)
-    except Exception:
-        return ImageFont.load_default()
-
-def init_db() -> None:
-    with db() as con:
-        con.executescript(
-            """
-            PRAGMA journal_mode=WAL;
-
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                first_name TEXT,
-                role TEXT DEFAULT 'operator',
-                is_admin INTEGER DEFAULT 0,
-                is_banned INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS printers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                display_no INTEGER,
-                name TEXT,
-                brand TEXT,
-                model_name TEXT,
-                bed_x REAL,
-                bed_y REAL,
-                bed_z REAL,
-                status TEXT DEFAULT 'idle',
-                image_url TEXT,
-                repair_note TEXT,
-                active_color TEXT,
-                current_queue_id INTEGER,
-                started_at INTEGER,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS models (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                filename TEXT NOT NULL,
-                kind TEXT DEFAULT 'manual', -- stl/gcode/manual
-                estimated_sec INTEGER,
-                size_x REAL,
-                size_y REAL,
-                size_z REAL,
-                pieces_per_print INTEGER DEFAULT 1,
-                default_color TEXT,
-                tags_json TEXT DEFAULT '[]',
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                total_qty INTEGER NOT NULL,
-                done_qty INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'open', -- open/done/closed
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS print_queue (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                printer_id INTEGER NOT NULL,
-                model_id INTEGER NOT NULL,
-                order_id INTEGER,
-                qty INTEGER DEFAULT 1,
-                status TEXT DEFAULT 'queued', -- queued/printing/paused/done/canceled/failed
-                estimated_sec INTEGER,
-                color TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                started_at INTEGER,
-                finished_at INTEGER,
-                paused_at INTEGER,
-                paused_elapsed INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                action TEXT NOT NULL,
-                payload_json TEXT DEFAULT '{}',
-                created_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_printers_user ON printers(user_id);
-            CREATE INDEX IF NOT EXISTS idx_models_user ON models(user_id);
-            CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
-            CREATE INDEX IF NOT EXISTS idx_queue_printer ON print_queue(printer_id, status);
-            """
-        )
-
-        # Safe migrations
-        if not _table_has_column(con, "users", "role"):
-            con.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'operator'")
-
-        for col, ddl in [
-            ("display_no", "ALTER TABLE printers ADD COLUMN display_no INTEGER"),
-            ("repair_note", "ALTER TABLE printers ADD COLUMN repair_note TEXT"),
-            ("active_color", "ALTER TABLE printers ADD COLUMN active_color TEXT"),
-            ("current_queue_id", "ALTER TABLE printers ADD COLUMN current_queue_id INTEGER"),
-            ("started_at", "ALTER TABLE printers ADD COLUMN started_at INTEGER"),
-        ]:
-            if not _table_has_column(con, "printers", col):
-                con.execute(ddl)
-
-        for col, ddl in [
-            ("pieces_per_print", "ALTER TABLE models ADD COLUMN pieces_per_print INTEGER DEFAULT 1"),
-            ("default_color", "ALTER TABLE models ADD COLUMN default_color TEXT"),
-            ("tags_json", "ALTER TABLE models ADD COLUMN tags_json TEXT DEFAULT '[]'"),
-        ]:
-            if not _table_has_column(con, "models", col):
-                con.execute(ddl)
-
-        for col, ddl in [
-            ("paused_at", "ALTER TABLE print_queue ADD COLUMN paused_at INTEGER"),
-            ("paused_elapsed", "ALTER TABLE print_queue ADD COLUMN paused_elapsed INTEGER DEFAULT 0"),
-            ("color", "ALTER TABLE print_queue ADD COLUMN color TEXT"),
-        ]:
-            if not _table_has_column(con, "print_queue", col):
-                con.execute(ddl)
-
-init_db()
-init_fonts_best_effort()
-
-# ----------------------------
-# AUDIT
-# ----------------------------
-def audit(user_id: int, action: str, payload: Optional[dict] = None) -> None:
-    with db() as con:
-        con.execute(
-            "INSERT INTO audit_log(user_id, action, payload_json) VALUES(?,?,?)",
-            (user_id, action, json.dumps(payload or {}, ensure_ascii=False)),
-        )
-
-# ----------------------------
-# Telegram Mini App initData verification
-# ----------------------------
-def _parse_init_data(init_data: str) -> Dict[str, str]:
-    out: Dict[str, str] = {}
-    for part in init_data.split("&"):
-        if "=" in part:
-            k, v = part.split("=", 1)
-            out[k] = v
-    return out
-
-def _check_init_data(init_data: str, bot_token: str, max_age_sec: int = 60 * 60 * 24) -> Dict[str, Any]:
-    if not bot_token:
-        raise HTTPException(500, "BOT_TOKEN not configured")
-
-    data = _parse_init_data(init_data)
-    received_hash = data.get("hash")
-    if not received_hash:
-        raise HTTPException(401, "Missing hash")
-
-    auth_date = int(data.get("auth_date", "0") or "0")
-    if auth_date and (now_ts() - auth_date) > max_age_sec:
-        raise HTTPException(401, "initData expired")
-
-    check_pairs = []
-    for k in sorted(data.keys()):
-        if k == "hash":
-            continue
-        check_pairs.append(f"{k}={data[k]}")
-    data_check_string = "\n".join(check_pairs)
-
-    secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
-    calc_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
-
-    if not hmac.compare_digest(calc_hash, received_hash):
-        raise HTTPException(401, "Bad initData signature")
-
-    import urllib.parse
-    user_raw = data.get("user", "{}")
-    try:
-        user_json = urllib.parse.unquote(user_raw)
-        user_obj = json.loads(user_json)
-    except Exception:
-        try:
-            user_obj = json.loads(user_raw)
-        except Exception:
-            user_obj = {}
-
-    return {"data": data, "user": user_obj}
-
-def upsert_user_from_tg(user_obj: Dict[str, Any]) -> Dict[str, Any]:
-    uid = int(user_obj.get("id") or 0)
-    if not uid:
-        raise HTTPException(401, "No user in initData")
-
-    first_name = str(user_obj.get("first_name") or "Пользователь")
-    is_admin_from_env = int(uid in ADMIN_IDS)
-
-    with db() as con:
-        # ✅ IMPORTANT FIX: is_admin = (users.is_admin OR excluded.is_admin)
-        con.execute(
-            """
-            INSERT INTO users(id, first_name, is_admin, role, updated_at)
-            VALUES(?,?,?,?,datetime('now'))
-            ON CONFLICT(id) DO UPDATE SET
-                first_name=excluded.first_name,
-                is_admin=(users.is_admin OR excluded.is_admin),
-                updated_at=datetime('now')
-            """,
-            (uid, first_name, is_admin_from_env, "admin" if is_admin_from_env else "operator"),
-        )
-        row = con.execute(
-            "SELECT id, first_name, role, is_admin, is_banned FROM users WHERE id=?",
-            (uid,),
-        ).fetchone()
-
-    return dict(row)
-
-def telegram_auth(request: Request) -> Dict[str, Any]:
-    init_data = request.headers.get("X-Telegram-InitData") or ""
-    if not init_data:
-        raise HTTPException(401, "Missing X-Telegram-InitData")
-    verified = _check_init_data(init_data, BOT_TOKEN)
-    user_obj = verified["user"]
-    user = upsert_user_from_tg(user_obj)
-    if user.get("is_banned"):
-        raise HTTPException(403, "Banned")
-    return user
-
-# ----------------------------
-# Roles / permissions
-# ----------------------------
-ROLE_OPERATOR = "operator"
-ROLE_MANAGER = "manager"
-ROLE_ADMIN = "admin"
-ROLE_ORDER = [ROLE_OPERATOR, ROLE_MANAGER, ROLE_ADMIN]
-
-def get_user_role(uid: int) -> str:
-    with db() as con:
-        r = con.execute("SELECT role FROM users WHERE id=?", (uid,)).fetchone()
-    return (r["role"] if r else ROLE_OPERATOR) or ROLE_OPERATOR
-
-def require_role(min_role: str):
-    def dep(user=Depends(telegram_auth)):
-        role = get_user_role(int(user["id"]))
-        if ROLE_ORDER.index(role) < ROLE_ORDER.index(min_role):
-            raise HTTPException(403, "Forbidden")
-        return user
-    return dep
-
-def require_admin_api(user=Depends(telegram_auth)):
-    if not bool(user.get("is_admin")):
-        raise HTTPException(403, "Admin only")
-    return user
-
-def _is_admin(uid: int) -> bool:
-    with db() as con:
-        r = con.execute("SELECT is_admin FROM users WHERE id=?", (uid,)).fetchone()
-    return bool(r and int(r["is_admin"]) == 1)
-
-# ----------------------------
-# Pydantic models
-# ----------------------------
-class PrinterCreateIn(BaseModel):
-    display_no: Optional[int] = None
-    name: str
-    brand: Optional[str] = None
-    model_name: Optional[str] = None
-    bed_x: Optional[float] = None
-    bed_y: Optional[float] = None
-    bed_z: Optional[float] = None
-
-class PrinterUpdateIn(BaseModel):
-    display_no: Optional[int] = None
-    name: Optional[str] = None
-    brand: Optional[str] = None
-    model_name: Optional[str] = None
-    bed_x: Optional[float] = None
-    bed_y: Optional[float] = None
-    bed_z: Optional[float] = None
-    status: Optional[str] = None
-    image_url: Optional[str] = None
-    repair_note: Optional[str] = None
-    active_color: Optional[str] = None
-
-class ModelManualIn(BaseModel):
-    filename: str
-    kind: str = "manual"
-    estimated_sec: Optional[int] = None
-    size_x: Optional[float] = None
-    size_y: Optional[float] = None
-    size_z: Optional[float] = None
-    pieces_per_print: int = 1
-    default_color: Optional[str] = None
-    tags: Optional[List[str]] = None
-
-class ModelUpdateIn(BaseModel):
-    filename: Optional[str] = None
-    estimated_sec: Optional[int] = None
-    pieces_per_print: Optional[int] = None
-    default_color: Optional[str] = None
-    tags: Optional[List[str]] = None
-
-class OrderCreateIn(BaseModel):
-    title: str
-    total_qty: int
-
-class OrderUpdateIn(BaseModel):
-    title: Optional[str] = None
-    total_qty: Optional[int] = None
-    done_qty: Optional[int] = None
-    status: Optional[str] = None
-
-class QueueEnqueueIn(BaseModel):
-    model_id: int
-    order_id: Optional[int] = None
-    qty: int = 1
-    estimated_sec: Optional[int] = None
-    color: Optional[str] = None
-
-class AdminClaimIn(BaseModel):
-    secret: str
-
-class AdminSetRoleIn(BaseModel):
-    user_id: int
-    role: str
-
-# ----------------------------
-# API: health + bootstrap
-# ----------------------------
-@app.get("/api/health")
-def health():
-    return {"ok": True, "time": utc_now_iso()}
-
-@app.get("/api/bootstrap")
-def bootstrap(user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        printers = con.execute(
-            "SELECT * FROM printers WHERE user_id=? ORDER BY COALESCE(display_no, id)",
-            (uid,),
-        ).fetchall()
-        models = con.execute(
-            "SELECT * FROM models WHERE user_id=? ORDER BY id DESC",
-            (uid,),
-        ).fetchall()
-        orders = con.execute(
-            "SELECT * FROM orders WHERE user_id=? ORDER BY id DESC",
-            (uid,),
-        ).fetchall()
-
-    return {
-        "user_data": {
-            "id": uid,
-            "first_name": user.get("first_name"),
-            "is_admin": bool(user.get("is_admin")),
-            "role": get_user_role(uid),
-        },
-        "printers_list": [dict(r) for r in printers],
-        "models_list": [dict(r) for r in models],
-        "orders_list": [dict(r) for r in orders],
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrintFarm Planner</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #141414;
+      --panel: #1f1f1f;
+      --panel-2: #252525;
+      --accent: #34d399;
+      --accent-2: #60a5fa;
+      --danger: #ef4444;
+      --text: #f5f5f5;
+      --muted: #a1a1aa;
+      --border: #2f2f2f;
     }
 
-# ----------------------------
-# API: admin claim + role
-# ----------------------------
-@app.post("/api/admin/claim")
-def admin_claim(body: AdminClaimIn, user=Depends(telegram_auth)):
-    if body.secret != ADMIN_SECRET:
-        raise HTTPException(403, "Bad secret")
-    uid = int(user["id"])
-    with db() as con:
-        con.execute("UPDATE users SET is_admin=1, role='admin', updated_at=datetime('now') WHERE id=?", (uid,))
-        row = con.execute("SELECT id, is_admin, role FROM users WHERE id=?", (uid,)).fetchone()
-    audit(uid, "admin_claim", {})
-    return {"ok": True, "user": dict(row)}
-
-@app.post("/api/admin/set_role")
-def admin_set_role(body: AdminSetRoleIn, admin=Depends(require_admin_api)):
-    if body.role not in (ROLE_OPERATOR, ROLE_MANAGER, ROLE_ADMIN):
-        raise HTTPException(400, "Bad role")
-    with db() as con:
-        con.execute("UPDATE users SET role=?, updated_at=datetime('now') WHERE id=?", (body.role, body.user_id))
-    audit(int(admin["id"]), "admin_set_role", {"user_id": body.user_id, "role": body.role})
-    return {"ok": True}
-
-# ----------------------------
-# API: printers
-# ----------------------------
-@app.get("/api/printers")
-def printers_list(user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        rows = con.execute(
-            "SELECT * FROM printers WHERE user_id=? ORDER BY COALESCE(display_no, id)",
-            (uid,),
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-@app.post("/api/printers")
-def printers_create(body: PrinterCreateIn, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        con.execute(
-            """
-            INSERT INTO printers(user_id, display_no, name, brand, model_name, bed_x, bed_y, bed_z, updated_at)
-            VALUES(?,?,?,?,?,?,?, ?, datetime('now'))
-            """,
-            (uid, body.display_no, body.name, body.brand, body.model_name, body.bed_x, body.bed_y, body.bed_z),
-        )
-        pid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-    audit(uid, "printer_create", {"printer_id": pid, "name": body.name})
-    return {"ok": True, "id": pid}
-
-@app.patch("/api/printers/{pid}")
-def printers_update(pid: int, body: PrinterUpdateIn, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    fields, vals = [], []
-    for k, v in body.model_dump(exclude_none=True).items():
-        fields.append(f"{k}=?")
-        vals.append(v)
-    if not fields:
-        return {"ok": True}
-    vals += [uid, pid]
-    with db() as con:
-        cur = con.execute(
-            f"UPDATE printers SET {', '.join(fields)}, updated_at=datetime('now') WHERE user_id=? AND id=?",
-            tuple(vals),
-        )
-        if cur.rowcount == 0:
-            raise HTTPException(404, "Printer not found")
-    audit(uid, "printer_update", {"printer_id": pid, "fields": body.model_dump(exclude_none=True)})
-    return {"ok": True}
-
-@app.delete("/api/printers/{pid}")
-def printers_delete(pid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        con.execute("DELETE FROM printers WHERE user_id=? AND id=?", (uid, pid))
-    audit(uid, "printer_delete", {"printer_id": pid})
-    return {"ok": True}
-
-@app.post("/api/printers/{pid}/image")
-def printers_set_image(pid: int, body: Dict[str, str], user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    image_url = (body.get("image_url") or "").strip()
-    if not image_url:
-        raise HTTPException(400, "image_url required")
-    with db() as con:
-        con.execute(
-            "UPDATE printers SET image_url=?, updated_at=datetime('now') WHERE user_id=? AND id=?",
-            (image_url, uid, pid),
-        )
-    audit(uid, "printer_set_image", {"printer_id": pid})
-    return {"ok": True}
-
-# ----------------------------
-# API: models
-# ----------------------------
-@app.get("/api/models")
-def models_list(user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        rows = con.execute("SELECT * FROM models WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
-    return [dict(r) for r in rows]
-
-@app.post("/api/models/manual")
-def models_manual(body: ModelManualIn, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    tags_json = json.dumps(body.tags or [], ensure_ascii=False)
-    with db() as con:
-        con.execute(
-            """
-            INSERT INTO models(user_id, filename, kind, estimated_sec, size_x, size_y, size_z, pieces_per_print, default_color, tags_json, updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?, datetime('now'))
-            """,
-            (
-                uid,
-                body.filename,
-                body.kind,
-                body.estimated_sec,
-                body.size_x,
-                body.size_y,
-                body.size_z,
-                int(body.pieces_per_print or 1),
-                body.default_color,
-                tags_json,
-            ),
-        )
-        mid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-    audit(uid, "model_create", {"model_id": mid, "filename": body.filename})
-    return {"ok": True, "id": mid}
-
-@app.patch("/api/models/{mid}")
-def models_update(mid: int, body: ModelUpdateIn, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    d = body.model_dump(exclude_none=True)
-    if "tags" in d:
-        d["tags_json"] = json.dumps(d.pop("tags") or [], ensure_ascii=False)
-    fields, vals = [], []
-    for k, v in d.items():
-        fields.append(f"{k}=?")
-        vals.append(v)
-    if not fields:
-        return {"ok": True}
-    vals += [uid, mid]
-    with db() as con:
-        cur = con.execute(
-            f"UPDATE models SET {', '.join(fields)}, updated_at=datetime('now') WHERE user_id=? AND id=?",
-            tuple(vals),
-        )
-        if cur.rowcount == 0:
-            raise HTTPException(404, "Model not found")
-    audit(uid, "model_update", {"model_id": mid, "fields": d})
-    return {"ok": True}
-
-@app.delete("/api/models/{mid}")
-def models_delete(mid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        con.execute("DELETE FROM models WHERE user_id=? AND id=?", (uid, mid))
-    audit(uid, "model_delete", {"model_id": mid})
-    return {"ok": True}
-
-# ----------------------------
-# API: orders
-# ----------------------------
-@app.get("/api/orders")
-def orders_list(user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        rows = con.execute("SELECT * FROM orders WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
-    return [dict(r) for r in rows]
-
-@app.post("/api/orders")
-def orders_create(body: OrderCreateIn, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        con.execute(
-            "INSERT INTO orders(user_id, title, total_qty, done_qty, status, updated_at) VALUES(?,?,?,0,'open',datetime('now'))",
-            (uid, body.title, int(body.total_qty)),
-        )
-        oid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-    audit(uid, "order_create", {"order_id": oid, "title": body.title})
-    return {"ok": True, "id": oid}
-
-@app.patch("/api/orders/{oid}")
-def orders_update(oid: int, body: OrderUpdateIn, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    d = body.model_dump(exclude_none=True)
-    fields, vals = [], []
-    for k, v in d.items():
-        fields.append(f"{k}=?")
-        vals.append(v)
-    if not fields:
-        return {"ok": True}
-    vals += [uid, oid]
-    with db() as con:
-        cur = con.execute(
-            f"UPDATE orders SET {', '.join(fields)}, updated_at=datetime('now') WHERE user_id=? AND id=?",
-            tuple(vals),
-        )
-        if cur.rowcount == 0:
-            raise HTTPException(404, "Order not found")
-    audit(uid, "order_update", {"order_id": oid, "fields": d})
-    return {"ok": True}
-
-@app.post("/api/orders/{oid}/close")
-def orders_close(oid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        con.execute("UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=?", (uid, oid))
-    audit(uid, "order_close", {"order_id": oid})
-    return {"ok": True}
-
-@app.post("/api/orders/{oid}/reopen")
-def orders_reopen(oid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        con.execute("UPDATE orders SET status='open', updated_at=datetime('now') WHERE user_id=? AND id=?", (uid, oid))
-    audit(uid, "order_reopen", {"order_id": oid})
-    return {"ok": True}
-
-@app.post("/api/orders/{oid}/inc")
-def orders_inc(oid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    qty = int(body.get("qty") or 1)
-    with db() as con:
-        con.execute(
-            "UPDATE orders SET done_qty=MAX(0, done_qty+?), updated_at=datetime('now') WHERE user_id=? AND id=?",
-            (qty, uid, oid),
-        )
-        con.execute(
-            "UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=? AND done_qty>=total_qty AND status='open'",
-            (uid, oid),
-        )
-    audit(uid, "order_inc", {"order_id": oid, "qty": qty})
-    return {"ok": True}
-
-@app.post("/api/orders/{oid}/dec")
-def orders_dec(oid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    qty = int(body.get("qty") or 1)
-    with db() as con:
-        con.execute(
-            "UPDATE orders SET done_qty=MAX(0, done_qty-?), updated_at=datetime('now') WHERE user_id=? AND id=?",
-            (qty, uid, oid),
-        )
-        con.execute(
-            "UPDATE orders SET status='open', updated_at=datetime('now') WHERE user_id=? AND id=? AND done_qty<total_qty AND status='done'",
-            (uid, oid),
-        )
-    audit(uid, "order_dec", {"order_id": oid, "qty": qty})
-    return {"ok": True}
-
-@app.delete("/api/orders/{oid}")
-def orders_delete(oid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        con.execute("DELETE FROM orders WHERE user_id=? AND id=?", (uid, oid))
-    audit(uid, "order_delete", {"order_id": oid})
-    return {"ok": True}
-
-# ----------------------------
-# API: queue
-# ----------------------------
-@app.get("/api/printers/{pid}/queue")
-def queue_list(pid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        rows = con.execute(
-            """
-            SELECT q.*, m.filename AS model_name
-            FROM print_queue q
-            JOIN models m ON m.id=q.model_id
-            JOIN printers p ON p.id=q.printer_id
-            WHERE q.user_id=? AND q.printer_id=? AND p.user_id=?
-            ORDER BY q.id
-            """,
-            (uid, pid, uid),
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-@app.post("/api/printers/{pid}/queue/enqueue")
-def queue_enqueue(pid: int, body: QueueEnqueueIn, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        est = body.estimated_sec
-        if est is None:
-            m = con.execute("SELECT estimated_sec FROM models WHERE user_id=? AND id=?", (uid, body.model_id)).fetchone()
-            if not m:
-                raise HTTPException(404, "Model not found")
-            est = m["estimated_sec"]
-        con.execute(
-            """
-            INSERT INTO print_queue(user_id, printer_id, model_id, order_id, qty, status, estimated_sec, color)
-            VALUES(?,?,?,?,?,'queued',?,?)
-            """,
-            (uid, pid, body.model_id, body.order_id, int(body.qty), est, body.color),
-        )
-        qid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-    audit(uid, "queue_enqueue", {"printer_id": pid, "queue_id": qid})
-    return {"ok": True, "id": qid}
-
-@app.post("/api/queue/{qid}/cancel")
-def queue_cancel(qid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        con.execute(
-            "UPDATE print_queue SET status='canceled', finished_at=? WHERE user_id=? AND id=? AND status IN ('queued','paused')",
-            (now_ts(), uid, qid),
-        )
-    audit(uid, "queue_cancel", {"queue_id": qid})
-    return {"ok": True}
-
-@app.post("/api/printers/{pid}/queue/{qid}/move")
-def queue_move(pid: int, qid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    direction = (body.get("direction") or "").lower()
-    if direction not in ("up", "down"):
-        raise HTTPException(400, "direction must be up/down")
-
-    with db() as con:
-        row = con.execute(
-            "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND id=? AND status='queued'",
-            (uid, pid, qid),
-        ).fetchone()
-        if not row:
-            raise HTTPException(404, "Queue item not found")
-
-        if direction == "up":
-            nb = con.execute(
-                "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' AND id<? ORDER BY id DESC LIMIT 1",
-                (uid, pid, qid),
-            ).fetchone()
-        else:
-            nb = con.execute(
-                "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' AND id>? ORDER BY id ASC LIMIT 1",
-                (uid, pid, qid),
-            ).fetchone()
-        if not nb:
-            return {"ok": True, "moved": False}
-
-        # swap primary key via temp id
-        a = int(qid)
-        b = int(nb["id"])
-        tmp = 10_000_000 + a
-        con.execute("UPDATE print_queue SET id=? WHERE id=?", (tmp, a))
-        con.execute("UPDATE print_queue SET id=? WHERE id=?", (a, b))
-        con.execute("UPDATE print_queue SET id=? WHERE id=?", (b, tmp))
-
-    audit(uid, "queue_move", {"printer_id": pid, "queue_id": qid, "direction": direction})
-    return {"ok": True, "moved": True}
-
-# ----------------------------
-# Print control (Variant A: ручной запуск)
-# ----------------------------
-def _fmt_h(sec: int) -> str:
-    sec = max(0, int(sec or 0))
-    h = sec // 3600
-    m = (sec % 3600) // 60
-    if h > 0:
-        return f"{h}ч {m}м"
-    return f"{m}м"
-
-def _finish_job(con: sqlite3.Connection, uid: int, pid: int, status: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
-    if not p:
-        raise HTTPException(404, "Printer not found")
-    qid = p["current_queue_id"]
-    if not qid:
-        raise HTTPException(400, "No current job")
-
-    q = con.execute("SELECT * FROM print_queue WHERE id=? AND user_id=?", (int(qid), uid)).fetchone()
-    if not q:
-        raise HTTPException(400, "Job not found")
-
-    con.execute("UPDATE print_queue SET status=?, finished_at=? WHERE id=?", (status, now_ts(), int(qid)))
-    con.execute("UPDATE printers SET status='idle', current_queue_id=NULL, started_at=NULL, updated_at=datetime('now') WHERE id=?", (pid,))
-
-    # order progress on done
-    if status == "done" and q["order_id"]:
-        m = con.execute("SELECT pieces_per_print FROM models WHERE user_id=? AND id=?", (uid, int(q["model_id"]))).fetchone()
-        ppp = int(m["pieces_per_print"] if m and m["pieces_per_print"] else 1)
-        done_add = int(q["qty"] or 1) * ppp
-
-        con.execute(
-            "UPDATE orders SET done_qty=done_qty+?, updated_at=datetime('now') WHERE user_id=? AND id=?",
-            (done_add, uid, int(q["order_id"])),
-        )
-        con.execute(
-            "UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=? AND done_qty>=total_qty AND status='open'",
-            (uid, int(q["order_id"])),
-        )
-
-    return dict(p), dict(q)
-
-@app.post("/api/printers/{pid}/print/start")
-def print_start(pid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
-        if not p:
-            raise HTTPException(404, "Printer not found")
-        if p["status"] in ("printing", "paused"):
-            raise HTTPException(400, "Printer already busy")
-
-        q = con.execute(
-            "SELECT * FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' ORDER BY id ASC LIMIT 1",
-            (uid, pid),
-        ).fetchone()
-        if not q:
-            raise HTTPException(400, "Queue is empty")
-
-        con.execute("UPDATE print_queue SET status='printing', started_at=?, paused_at=NULL, paused_elapsed=0 WHERE id=?",
-                    (now_ts(), int(q["id"])))
-        con.execute("UPDATE printers SET status='printing', current_queue_id=?, started_at=?, updated_at=datetime('now') WHERE id=?",
-                    (int(q["id"]), now_ts(), pid))
-
-    audit(uid, "print_start", {"printer_id": pid, "queue_id": int(q["id"])})
-    return {"ok": True, "queue_id": int(q["id"])}
-
-@app.post("/api/printers/{pid}/print/pause")
-def print_pause(pid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
-        if not p:
-            raise HTTPException(404, "Printer not found")
-        if p["status"] != "printing":
-            raise HTTPException(400, "Printer not printing")
-        qid = p["current_queue_id"]
-        if not qid:
-            raise HTTPException(400, "No current job")
-
-        q = con.execute("SELECT * FROM print_queue WHERE id=? AND user_id=?", (int(qid), uid)).fetchone()
-        if not q or not q["started_at"]:
-            raise HTTPException(400, "Bad job state")
-
-        elapsed = max(0, now_ts() - int(q["started_at"]))
-        con.execute("UPDATE print_queue SET status='paused', paused_at=?, paused_elapsed=? WHERE id=?",
-                    (now_ts(), elapsed, int(qid)))
-        con.execute("UPDATE printers SET status='paused', updated_at=datetime('now') WHERE id=?", (pid,))
-
-    audit(uid, "print_pause", {"printer_id": pid})
-    return {"ok": True}
-
-@app.post("/api/printers/{pid}/print/resume")
-def print_resume(pid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
-        if not p:
-            raise HTTPException(404, "Printer not found")
-        if p["status"] != "paused":
-            raise HTTPException(400, "Printer not paused")
-        qid = p["current_queue_id"]
-        if not qid:
-            raise HTTPException(400, "No current job")
-
-        q = con.execute("SELECT * FROM print_queue WHERE id=? AND user_id=?", (int(qid), uid)).fetchone()
-        if not q:
-            raise HTTPException(400, "Job not found")
-
-        paused_elapsed = int(q["paused_elapsed"] or 0)
-        new_started = now_ts() - paused_elapsed
-        con.execute("UPDATE print_queue SET status='printing', started_at=?, paused_at=NULL WHERE id=?",
-                    (new_started, int(qid)))
-        con.execute("UPDATE printers SET status='printing', started_at=?, updated_at=datetime('now') WHERE id=?",
-                    (new_started, pid))
-
-    audit(uid, "print_resume", {"printer_id": pid})
-    return {"ok": True}
-
-@app.post("/api/printers/{pid}/print/finish")
-def print_finish(pid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        p, q = _finish_job(con, uid, pid, "done")
-    audit(uid, "print_finish", {"printer_id": pid, "queue_id": q.get("id")})
-    asyncio.create_task(_notify_finished(uid, pid, q, ok=True))
-    return {"ok": True}
-
-@app.post("/api/printers/{pid}/print/fail")
-def print_fail(pid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    reason = (body.get("reason") or "Ошибка").strip()
-    with db() as con:
-        p, q = _finish_job(con, uid, pid, "failed")
-        con.execute("UPDATE printers SET status='error', repair_note=?, updated_at=datetime('now') WHERE user_id=? AND id=?",
-                    (reason, uid, pid))
-    audit(uid, "print_fail", {"printer_id": pid, "queue_id": q.get("id"), "reason": reason})
-    asyncio.create_task(_notify_finished(uid, pid, q, ok=False, reason=reason))
-    return {"ok": True}
-
-# ----------------------------
-# Suggestions engine
-# ----------------------------
-def _horizon_sec() -> int:
-    if not is_night_now():
-        return 4 * 3600
-    nowb = berlin_now()
-    target = nowb.replace(hour=8, minute=0, second=0, microsecond=0)
-    if target <= nowb:
-        target = target + datetime.timedelta(days=1)
-    sec = int((target - nowb).total_seconds())
-    return max(2 * 3600, min(sec, 12 * 3600))
-
-def build_suggestions(uid: int, pid: int) -> List[Dict[str, Any]]:
-    horizon = _horizon_sec()
-    suggestions: List[Dict[str, Any]] = []
-
-    with db() as con:
-        models = con.execute(
-            "SELECT id, filename, estimated_sec, pieces_per_print, default_color FROM models WHERE user_id=?",
-            (uid,),
-        ).fetchall()
-        orders = con.execute(
-            "SELECT id, title, total_qty, done_qty FROM orders WHERE user_id=? AND status='open'",
-            (uid,),
-        ).fetchall()
-
-    # 1) варианты "закрыть один заказ"
-    for o in orders:
-        remain = int(o["total_qty"]) - int(o["done_qty"])
-        if remain <= 0:
-            continue
-        best = None
-        for m in models:
-            est = m["estimated_sec"]
-            if not est:
-                continue
-            ppp = int(m["pieces_per_print"] or 1)
-            batches = int(math.ceil(remain / max(ppp, 1)))
-            total_time = int(est) * batches
-            if total_time <= horizon:
-                score = total_time
-                if (best is None) or (score < best["score"]):
-                    best = {
-                        "score": score,
-                        "items": [{
-                            "model_id": int(m["id"]),
-                            "order_id": int(o["id"]),
-                            "qty": batches,
-                            "estimated_sec": int(est),
-                            "color": m["default_color"],
-                        }],
-                        "label": f"Закрыть заказ «{o['title']}»",
-                        "time": total_time,
-                    }
-        if best:
-            suggestions.append({
-                "type": "order_close",
-                "label": best["label"],
-                "time": best["time"],
-                "items": best["items"],
-            })
-
-    # 2) ночная упаковка (2 элемента)
-    combos: List[Dict[str, Any]] = []
-    candidates: List[Dict[str, Any]] = []
-
-    for o in orders:
-        remain = int(o["total_qty"]) - int(o["done_qty"])
-        if remain <= 0:
-            continue
-        for m in models:
-            est = m["estimated_sec"]
-            if not est:
-                continue
-            ppp = int(m["pieces_per_print"] or 1)
-            batches = min(int(math.ceil(remain / max(ppp, 1))), 5)
-            candidates.append({
-                "order_id": int(o["id"]),
-                "model_id": int(m["id"]),
-                "qty": batches,
-                "estimated_sec": int(est),
-                "color": m["default_color"],
-                "time": int(est) * batches,
-            })
-
-    for m in models:
-        est = m["estimated_sec"]
-        if not est:
-            continue
-        candidates.append({
-            "order_id": None,
-            "model_id": int(m["id"]),
-            "qty": 1,
-            "estimated_sec": int(est),
-            "color": m["default_color"],
-            "time": int(est),
-        })
-
-    candidates.sort(key=lambda x: x["time"])
-
-    for i in range(min(10, len(candidates))):
-        for j in range(i + 1, min(12, len(candidates))):
-            t = candidates[i]["time"] + candidates[j]["time"]
-            if t <= horizon:
-                combos.append({
-                    "type": "pack",
-                    "label": "Заполнить время (комбо)",
-                    "time": t,
-                    "items": [
-                        {k: candidates[i][k] for k in ("model_id", "order_id", "qty", "estimated_sec", "color")},
-                        {k: candidates[j][k] for k in ("model_id", "order_id", "qty", "estimated_sec", "color")},
-                    ]
-                })
-    combos.sort(key=lambda x: abs(horizon - x["time"]))
-    suggestions.extend(combos[:2])
-
-    # 3) быстрые модели
-    shorts = []
-    for m in models:
-        est = m["estimated_sec"]
-        if est and int(est) <= horizon:
-            shorts.append({
-                "type": "short",
-                "label": f"Быстрая печать: {m['filename']}",
-                "time": int(est),
-                "items": [{
-                    "model_id": int(m["id"]),
-                    "order_id": None,
-                    "qty": 1,
-                    "estimated_sec": int(est),
-                    "color": m["default_color"],
-                }]
-            })
-    shorts.sort(key=lambda x: x["time"])
-    suggestions.extend(shorts[:2])
-
-    uniq = []
-    seen = set()
-    for s in suggestions:
-        key = (s["label"], int(s["time"]))
-        if key in seen:
-            continue
-        seen.add(key)
-        uniq.append(s)
-
-    return uniq[:5]
-
-SUGGESTION_CACHE: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
-
-@app.get("/api/printers/{pid}/suggestions")
-def api_suggestions(pid: int, user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    sugg = build_suggestions(uid, pid)
-    SUGGESTION_CACHE[(uid, pid)] = sugg
-    audit(uid, "suggestions_build", {"printer_id": pid, "count": len(sugg)})
-    return sugg
-
-@app.post("/api/printers/{pid}/suggestions/apply")
-def api_suggestions_apply(pid: int, body: Dict[str, Any], user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    idx = int(body.get("index") or -1)
-    key = (uid, pid)
-    if key not in SUGGESTION_CACHE:
-        SUGGESTION_CACHE[key] = build_suggestions(uid, pid)
-    sugg = SUGGESTION_CACHE[key]
-    if idx < 0 or idx >= len(sugg):
-        raise HTTPException(400, "Bad index")
-
-    plan = sugg[idx]
-    created_ids = []
-    with db() as con:
-        for item in plan["items"]:
-            est_total = int(item["estimated_sec"]) * int(item["qty"])
-            con.execute(
-                """
-                INSERT INTO print_queue(user_id, printer_id, model_id, order_id, qty, status, estimated_sec, color)
-                VALUES(?,?,?,?,?,'queued',?,?)
-                """,
-                (uid, pid, int(item["model_id"]), item.get("order_id"), int(item["qty"]), est_total, item.get("color")),
-            )
-            qid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-            created_ids.append(int(qid))
-
-    audit(uid, "suggestions_apply", {"printer_id": pid, "index": idx, "queue_ids": created_ids})
-    return {"ok": True, "queue_ids": created_ids}
-
-# ----------------------------
-# Dashboard API (mini-app)
-# ----------------------------
-@app.get("/api/dashboard")
-def api_dashboard(user=Depends(telegram_auth)):
-    uid = int(user["id"])
-    with db() as con:
-        printers = con.execute(
-            "SELECT id, display_no, name, status, repair_note, active_color, current_queue_id, started_at, image_url FROM printers WHERE user_id=? ORDER BY COALESCE(display_no,id)",
-            (uid,),
-        ).fetchall()
-        qrows = con.execute(
-            """
-            SELECT q.id, q.printer_id, q.model_id, q.status, q.estimated_sec, q.started_at, m.filename AS model_name
-            FROM print_queue q
-            JOIN models m ON m.id=q.model_id
-            WHERE q.user_id=? AND q.status IN ('printing','paused')
-            """,
-            (uid,),
-        ).fetchall()
-        qmap = {int(q["printer_id"]): dict(q) for q in qrows}
-
-    out = []
-    for p in printers:
-        pd = dict(p)
-        q = qmap.get(int(p["id"]))
-        if q and q.get("started_at") and q.get("estimated_sec"):
-            elapsed = max(0, now_ts() - int(q["started_at"]))
-            pct = int(min(100, (elapsed / max(1, int(q["estimated_sec"]))) * 100))
-            pd["current"] = {
-                "queue_id": q["id"],
-                "model_name": q["model_name"],
-                "progress": pct,
-                "elapsed_sec": elapsed,
-                "remaining_sec": max(0, int(q["estimated_sec"]) - elapsed),
-                "status": q["status"],
-            }
-        else:
-            pd["current"] = None
-        out.append(pd)
-    return out
-
-# ----------------------------
-# Pillow cards (finished/failed)
-# ----------------------------
-def _render_event_card(title: str, lines: List[str], accent: str) -> bytes:
-    w, h = 900, 420
-    img = Image.new("RGB", (w, h), "#0b1220")
-    d = ImageDraw.Draw(img)
-
-    d.rectangle((0, 0, w, 96), fill=accent)
-
-    ft = font_bold(40)
-    fs = font_regular(26)
-    fsm = font_regular(22)
-
-    d.text((32, 22), title, font=ft, fill="white")
-    y = 130
-    for ln in lines[:6]:
-        d.text((32, y), ln, font=fs, fill="#e5e7eb")
-        y += 44
-
-    d.text((32, h - 52), "Откройте предложения и запустите следующую печать", font=fsm, fill="#93c5fd")
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
-
-async def _notify_finished(uid: int, pid: int, q: Dict[str, Any], ok: bool, reason: str = "") -> None:
-    sugg = build_suggestions(uid, pid)
-    SUGGESTION_CACHE[(uid, pid)] = sugg
-
-    model_name = "Модель"
-    order_info = "Заказ: —"
-    with db() as con:
-        m = con.execute("SELECT filename FROM models WHERE user_id=? AND id=?", (uid, int(q["model_id"]))).fetchone()
-        if m:
-            model_name = m["filename"]
-        if q.get("order_id"):
-            o = con.execute("SELECT title, done_qty, total_qty FROM orders WHERE user_id=? AND id=?", (uid, int(q["order_id"]))).fetchone()
-            if o:
-                order_info = f"Заказ: {o['title']} ({o['done_qty']}/{o['total_qty']})"
-
-    if ok:
-        img_bytes = _render_event_card(
-            "Печать завершена ✅",
-            [
-                f"Принтер: #{pid}",
-                f"Модель: {model_name}",
-                f"Время: {_fmt_h(int(q.get('estimated_sec') or 0))}",
-                order_info,
-            ],
-            accent="#16a34a",
-        )
-        caption = "Печать завершена. Предлагаю запустить следующую модель."
-    else:
-        img_bytes = _render_event_card(
-            "Печать завершена с ошибкой ❌",
-            [
-                f"Принтер: #{pid}",
-                f"Модель: {model_name}",
-                f"Причина: {reason or 'Ошибка'}",
-                order_info,
-            ],
-            accent="#ef4444",
-        )
-        caption = "Обнаружена ошибка. Вы можете отметить ремонт или запустить другую модель."
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="▶️ Предложения", callback_data=f"sugg_open:{pid}"),
-            InlineKeyboardButton(text="📋 Очередь", callback_data=f"queue_open:{pid}"),
-        ],
-        [
-            InlineKeyboardButton(text="🛠 Ремонт", callback_data=f"printer_repair:{pid}"),
-            InlineKeyboardButton(text="⚙️ Меню принтера", callback_data=f"printer_menu:{pid}"),
-        ]
-    ])
-
-    if bot is None:
-        return
-
-    try:
-        inp = BufferedInputFile(img_bytes, filename="print_event.png")
-        await bot.send_photo(chat_id=uid, photo=inp, caption=caption, reply_markup=kb)
-    except Exception as e:
-        log.warning("notify failed: %s", e)
-
-# ----------------------------
-# Worker loop (auto-finish + notify)
-# ----------------------------
-async def worker_loop() -> None:
-    while True:
-        try:
-            await asyncio.sleep(WORKER_TICK_SEC)
-            with db() as con:
-                rows = con.execute(
-                    """
-                    SELECT p.user_id, p.id AS printer_id, p.status, p.current_queue_id
-                    FROM printers p
-                    WHERE p.status IN ('printing','paused','error')
-                    """
-                ).fetchall()
-
-                for r in rows:
-                    uid = int(r["user_id"])
-                    pid = int(r["printer_id"])
-                    if r["status"] != "printing":
-                        continue
-                    qid = r["current_queue_id"]
-                    if not qid:
-                        continue
-
-                    q = con.execute("SELECT * FROM print_queue WHERE id=? AND user_id=?", (int(qid), uid)).fetchone()
-                    if not q or q["status"] != "printing":
-                        continue
-
-                    started_at = q["started_at"]
-                    est = q["estimated_sec"]
-                    if not started_at or not est:
-                        continue
-
-                    elapsed = max(0, now_ts() - int(started_at))
-                    if elapsed >= int(est):
-                        _, q_row = _finish_job(con, uid, pid, "done")
-                        audit(uid, "worker_autofinish", {"printer_id": pid, "queue_id": q_row.get("id")})
-                        asyncio.create_task(_notify_finished(uid, pid, q_row, ok=True))
-        except Exception as e:
-            log.exception("worker_loop error: %s", e)
-
-# ============================================================
-# BOT (aiogram v3): handlers — ТОЛЬКО "Вы"
-# ============================================================
-
-@router.message(Command("start"))
-async def cmd_start(msg: Message):
-    uid = msg.from_user.id
-    first = msg.from_user.first_name or "Пользователь"
-    is_admin_from_env = int(uid in ADMIN_IDS)
-
-    with db() as con:
-        con.execute(
-            """
-            INSERT INTO users(id, first_name, is_admin, role, updated_at)
-            VALUES(?,?,?,?,datetime('now'))
-            ON CONFLICT(id) DO UPDATE SET
-                first_name=excluded.first_name,
-                is_admin=(users.is_admin OR excluded.is_admin),
-                updated_at=datetime('now')
-            """,
-            (uid, first, is_admin_from_env, "admin" if is_admin_from_env else "operator"),
-        )
-    audit(uid, "bot_start", {})
-
-    await msg.answer(
-        "PrintFarm OS: бот подключён.\n"
-        "Доступные команды:\n"
-        "/printers — принтеры\n"
-        "/orders — заказы\n"
-        "/models — модели\n"
-        "/admin — админ-панель\n"
-        "/claim_admin <secret> — выдать права администратора"
-    )
-
-@router.message(Command("claim_admin"))
-async def cmd_claim_admin(msg: Message):
-    secret = (msg.text or "").split(maxsplit=1)
-    secret = secret[1].strip() if len(secret) > 1 else ""
-    if not secret or secret != ADMIN_SECRET:
-        await msg.answer("Секретный код неверный.")
-        return
-
-    uid = msg.from_user.id
-    with db() as con:
-        con.execute("UPDATE users SET is_admin=1, role='admin', updated_at=datetime('now') WHERE id=?", (uid,))
-    audit(uid, "bot_claim_admin", {})
-    await msg.answer("✅ Права администратора активированы.")
-
-@router.message(Command("admin"))
-async def cmd_admin(msg: Message):
-    uid = msg.from_user.id
-    if not _is_admin(uid):
-        await msg.answer("У Вас нет прав администратора.")
-        return
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🖨 Принтеры", callback_data="admin_printers"),
-            InlineKeyboardButton(text="📦 Заказы", callback_data="admin_orders"),
-        ],
-        [
-            InlineKeyboardButton(text="📁 Модели", callback_data="admin_models"),
-            InlineKeyboardButton(text="🧾 Аудит (10)", callback_data="admin_audit"),
-        ],
-    ])
-    await msg.answer("Админ-панель:", reply_markup=kb)
-
-@router.message(Command("printers"))
-async def cmd_printers(msg: Message):
-    uid = msg.from_user.id
-    with db() as con:
-        ps = con.execute(
-            "SELECT id, display_no, name, status FROM printers WHERE user_id=? ORDER BY COALESCE(display_no,id)",
-            (uid,),
-        ).fetchall()
-
-    if not ps:
-        await msg.answer("Принтеров нет. Добавьте принтер в мини-приложении.")
-        return
-
-    lines = ["Ваши принтеры:"]
-    kb_rows = []
-    for p in ps[:40]:
-        pid = int(p["id"])
-        no = p["display_no"] or pid
-        nm = p["name"] or "Принтер"
-        st = p["status"] or "idle"
-        lines.append(f"• #{no} — {nm} ({st})")
-        kb_rows.append([
-            InlineKeyboardButton(text=f"⚙️ #{no}", callback_data=f"printer_menu:{pid}"),
-            InlineKeyboardButton(text="▶️ Старт", callback_data=f"printer_start_next:{pid}"),
-        ])
-
-    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
-    await msg.answer("\n".join(lines), reply_markup=kb)
-
-@router.message(Command("orders"))
-async def cmd_orders(msg: Message):
-    uid = msg.from_user.id
-    with db() as con:
-        rows = con.execute(
-            "SELECT id, title, done_qty, total_qty, status FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 20",
-            (uid,),
-        ).fetchall()
-
-    if not rows:
-        await msg.answer("Заказов нет.")
-        return
-
-    lines = ["Ваши заказы:"]
-    kb_rows = []
-    for r in rows:
-        oid = int(r["id"])
-        lines.append(f"• #{oid} {r['title']} — {r['done_qty']}/{r['total_qty']} ({r['status']})")
-        if r["status"] == "open":
-            kb_rows.append([
-                InlineKeyboardButton(text=f"✅ Закрыть #{oid}", callback_data=f"order_close:{oid}"),
-                InlineKeyboardButton(text=f"+1 к #{oid}", callback_data=f"order_inc:{oid}:1"),
-            ])
-
-    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows) if kb_rows else None
-    await msg.answer("\n".join(lines), reply_markup=kb)
-
-@router.message(Command("models"))
-async def cmd_models(msg: Message):
-    uid = msg.from_user.id
-    with db() as con:
-        rows = con.execute(
-            "SELECT id, filename, estimated_sec, pieces_per_print FROM models WHERE user_id=? ORDER BY id DESC LIMIT 25",
-            (uid,),
-        ).fetchall()
-    if not rows:
-        await msg.answer("Моделей нет.")
-        return
-
-    lines = ["Ваши модели:"]
-    for r in rows:
-        lines.append(f"• #{r['id']} {r['filename']} — {_fmt_h(r['estimated_sec'] or 0)} / x{r['pieces_per_print'] or 1}")
-    await msg.answer("\n".join(lines))
-
-# ----------------------------
-# BOT callbacks: admin
-# ----------------------------
-@router.callback_query(F.data == "admin_printers")
-async def cb_admin_printers(cb: CallbackQuery):
-    uid = cb.from_user.id
-    if not _is_admin(uid):
-        await cb.answer("Нет доступа", show_alert=True)
-        return
-
-    with db() as con:
-        rows = con.execute(
-            "SELECT id, display_no, name, status FROM printers WHERE user_id=? ORDER BY COALESCE(display_no,id)",
-            (uid,),
-        ).fetchall()
-
-    lines = ["Принтеры:"]
-    kb_rows = []
-    for r in rows[:50]:
-        pid = int(r["id"])
-        no = r["display_no"] or pid
-        lines.append(f"• #{no} {r['name'] or ''} — {r['status']}")
-        kb_rows.append([
-            InlineKeyboardButton(text=f"⚙️ #{no}", callback_data=f"printer_menu:{pid}"),
-            InlineKeyboardButton(text="📋 Очередь", callback_data=f"queue_open:{pid}"),
-        ])
-    await cb.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
-    await cb.answer()
-
-@router.callback_query(F.data == "admin_orders")
-async def cb_admin_orders(cb: CallbackQuery):
-    uid = cb.from_user.id
-    if not _is_admin(uid):
-        await cb.answer("Нет доступа", show_alert=True)
-        return
-
-    with db() as con:
-        rows = con.execute(
-            "SELECT id, title, done_qty, total_qty, status FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 30",
-            (uid,),
-        ).fetchall()
-
-    lines = ["Заказы:"]
-    kb_rows = []
-    for r in rows:
-        oid = int(r["id"])
-        lines.append(f"• #{oid} {r['title']} — {r['done_qty']}/{r['total_qty']} ({r['status']})")
-        if r["status"] == "open":
-            kb_rows.append([
-                InlineKeyboardButton(text=f"✅ Закрыть #{oid}", callback_data=f"order_close:{oid}"),
-                InlineKeyboardButton(text=f"+1 к #{oid}", callback_data=f"order_inc:{oid}:1"),
-            ])
-    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows) if kb_rows else None
-    await cb.message.answer("\n".join(lines), reply_markup=kb)
-    await cb.answer()
-
-@router.callback_query(F.data == "admin_models")
-async def cb_admin_models(cb: CallbackQuery):
-    uid = cb.from_user.id
-    if not _is_admin(uid):
-        await cb.answer("Нет доступа", show_alert=True)
-        return
-
-    with db() as con:
-        rows = con.execute(
-            "SELECT id, filename, estimated_sec, pieces_per_print FROM models WHERE user_id=? ORDER BY id DESC LIMIT 30",
-            (uid,),
-        ).fetchall()
-
-    lines = ["Модели:"]
-    for r in rows:
-        lines.append(f"• #{r['id']} {r['filename']} — {_fmt_h(r['estimated_sec'] or 0)} / x{r['pieces_per_print'] or 1}")
-
-    await cb.message.answer("\n".join(lines))
-    await cb.answer()
-
-@router.callback_query(F.data == "admin_audit")
-async def cb_admin_audit(cb: CallbackQuery):
-    uid = cb.from_user.id
-    if not _is_admin(uid):
-        await cb.answer("Нет доступа", show_alert=True)
-        return
-
-    with db() as con:
-        rows = con.execute(
-            "SELECT action, payload_json, created_at FROM audit_log WHERE user_id=? ORDER BY id DESC LIMIT 10",
-            (uid,),
-        ).fetchall()
-
-    lines = ["Аудит (последние 10):"]
-    for r in rows:
-        lines.append(f"- {r['created_at']} — {r['action']} — {r['payload_json']}")
-    await cb.message.answer("\n".join(lines))
-    await cb.answer()
-
-# ----------------------------
-# BOT callbacks: printer menu / queue / suggestions / orders
-# ----------------------------
-@router.callback_query(F.data.startswith("printer_menu:"))
-async def cb_printer_menu(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
-    if not p:
-        await cb.answer("Принтер не найден", show_alert=True)
-        return
-
-    no = p["display_no"] or pid
-    st = p["status"] or "idle"
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="▶️ Старт (из очереди)", callback_data=f"printer_start_next:{pid}"),
-            InlineKeyboardButton(text="📋 Очередь", callback_data=f"queue_open:{pid}"),
-        ],
-        [
-            InlineKeyboardButton(text="💡 Предложения", callback_data=f"sugg_open:{pid}"),
-            InlineKeyboardButton(text="🛠 Ремонт", callback_data=f"printer_repair:{pid}"),
-        ],
-        [
-            InlineKeyboardButton(text="⏸ Пауза", callback_data=f"printer_pause:{pid}"),
-            InlineKeyboardButton(text="▶️ Продолжить", callback_data=f"printer_resume:{pid}"),
-        ],
-        [
-            InlineKeyboardButton(text="✅ Завершить", callback_data=f"printer_finish:{pid}"),
-            InlineKeyboardButton(text="❌ Ошибка", callback_data=f"printer_fail:{pid}"),
-        ],
-    ])
-
-    await cb.message.answer(f"Принтер #{no}. Текущий статус: {st}.", reply_markup=kb)
-    await cb.answer()
-
-@router.callback_query(F.data.startswith("printer_start_next:"))
-async def cb_printer_start_next(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
-        if not p:
-            await cb.answer("Принтер не найден", show_alert=True)
-            return
-        if (p["status"] or "") in ("printing", "paused"):
-            await cb.answer("Принтер занят.", show_alert=True)
-            return
-
-        q = con.execute(
-            "SELECT * FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' ORDER BY id ASC LIMIT 1",
-            (uid, pid),
-        ).fetchone()
-        if not q:
-            await cb.answer("Очередь пуста.", show_alert=True)
-            return
-
-        con.execute("UPDATE print_queue SET status='printing', started_at=?, paused_at=NULL, paused_elapsed=0 WHERE id=?",
-                    (now_ts(), int(q["id"])))
-        con.execute("UPDATE printers SET status='printing', current_queue_id=?, started_at=?, updated_at=datetime('now') WHERE id=?",
-                    (int(q["id"]), now_ts(), pid))
-
-    audit(uid, "bot_print_start", {"printer_id": pid, "queue_id": int(q["id"])})
-    await cb.answer("Запуск выполнен.")
-    await cb.message.answer(f"Печать запущена на принтере #{pid}.")
-
-@router.callback_query(F.data.startswith("printer_pause:"))
-async def cb_printer_pause(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
-        if not p or (p["status"] or "") != "printing" or not p["current_queue_id"]:
-            await cb.answer("Невозможно поставить на паузу.", show_alert=True)
-            return
-        q = con.execute("SELECT * FROM print_queue WHERE user_id=? AND id=?", (uid, int(p["current_queue_id"]))).fetchone()
-        if not q or not q["started_at"]:
-            await cb.answer("Состояние задания некорректно.", show_alert=True)
-            return
-
-        elapsed = max(0, now_ts() - int(q["started_at"]))
-        con.execute("UPDATE print_queue SET status='paused', paused_at=?, paused_elapsed=? WHERE id=?",
-                    (now_ts(), elapsed, int(q["id"])))
-        con.execute("UPDATE printers SET status='paused', updated_at=datetime('now') WHERE id=?", (pid,))
-
-    audit(uid, "bot_print_pause", {"printer_id": pid})
-    await cb.answer("Пауза установлена.")
-
-@router.callback_query(F.data.startswith("printer_resume:"))
-async def cb_printer_resume(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        p = con.execute("SELECT * FROM printers WHERE user_id=? AND id=?", (uid, pid)).fetchone()
-        if not p or (p["status"] or "") != "paused" or not p["current_queue_id"]:
-            await cb.answer("Невозможно продолжить.", show_alert=True)
-            return
-        q = con.execute("SELECT * FROM print_queue WHERE user_id=? AND id=?", (uid, int(p["current_queue_id"]))).fetchone()
-        if not q:
-            await cb.answer("Задание не найдено.", show_alert=True)
-            return
-
-        paused_elapsed = int(q["paused_elapsed"] or 0)
-        new_started = now_ts() - paused_elapsed
-        con.execute("UPDATE print_queue SET status='printing', started_at=?, paused_at=NULL WHERE id=?",
-                    (new_started, int(q["id"])))
-        con.execute("UPDATE printers SET status='printing', started_at=?, updated_at=datetime('now') WHERE id=?",
-                    (new_started, pid))
-
-    audit(uid, "bot_print_resume", {"printer_id": pid})
-    await cb.answer("Печать продолжена.")
-
-@router.callback_query(F.data.startswith("printer_finish:"))
-async def cb_printer_finish(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        try:
-            _, q = _finish_job(con, uid, pid, "done")
-        except Exception as e:
-            await cb.answer(str(e), show_alert=True)
-            return
-
-    audit(uid, "bot_print_finish", {"printer_id": pid, "queue_id": q.get("id")})
-    asyncio.create_task(_notify_finished(uid, pid, q, ok=True))
-    await cb.answer("Завершено.")
-
-@router.callback_query(F.data.startswith("printer_fail:"))
-async def cb_printer_fail(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-    reason = "Ошибка (отмечено через бота)"
-
-    with db() as con:
-        try:
-            _, q = _finish_job(con, uid, pid, "failed")
-            con.execute("UPDATE printers SET status='error', repair_note=?, updated_at=datetime('now') WHERE user_id=? AND id=?",
-                        (reason, uid, pid))
-        except Exception as e:
-            await cb.answer(str(e), show_alert=True)
-            return
-
-    audit(uid, "bot_print_fail", {"printer_id": pid, "queue_id": q.get("id")})
-    asyncio.create_task(_notify_finished(uid, pid, q, ok=False, reason=reason))
-    await cb.answer("Ошибка отмечена.")
-
-@router.callback_query(F.data.startswith("printer_repair:"))
-async def cb_printer_repair(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        con.execute(
-            "UPDATE printers SET status='repair', repair_note=COALESCE(repair_note,'Требуется обслуживание'), updated_at=datetime('now') WHERE user_id=? AND id=?",
-            (uid, pid),
-        )
-    audit(uid, "bot_printer_repair", {"printer_id": pid})
-    await cb.answer("Принтер переведён в режим ремонта.")
-
-@router.callback_query(F.data.startswith("queue_open:"))
-async def cb_queue_open(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        rows = con.execute(
-            """
-            SELECT q.id, q.status, q.qty, q.estimated_sec, m.filename AS model_name
-            FROM print_queue q
-            JOIN models m ON m.id=q.model_id
-            WHERE q.user_id=? AND q.printer_id=?
-            ORDER BY q.id
-            """,
-            (uid, pid),
-        ).fetchall()
-
-    if not rows:
-        await cb.message.answer("Очередь пуста.")
-        await cb.answer()
-        return
-
-    lines = [f"Очередь принтера #{pid}:"]
-    kb_rows = []
-    for r in rows[:25]:
-        qid = int(r["id"])
-        lines.append(f"• #{qid} {r['model_name']} x{r['qty']} — {_fmt_h(r['estimated_sec'] or 0)} — {r['status']}")
-        if r["status"] == "queued":
-            kb_rows.append([
-                InlineKeyboardButton(text=f"⬆️ {qid}", callback_data=f"queue_move:{pid}:{qid}:up"),
-                InlineKeyboardButton(text=f"⬇️ {qid}", callback_data=f"queue_move:{pid}:{qid}:down"),
-            ])
-            kb_rows.append([
-                InlineKeyboardButton(text=f"🗑 Отменить {qid}", callback_data=f"queue_cancel:{qid}"),
-            ])
-
-    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows) if kb_rows else None
-    await cb.message.answer("\n".join(lines), reply_markup=kb)
-    await cb.answer()
-
-@router.callback_query(F.data.startswith("queue_cancel:"))
-async def cb_queue_cancel(cb: CallbackQuery):
-    uid = cb.from_user.id
-    qid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        con.execute(
-            "UPDATE print_queue SET status='canceled', finished_at=? WHERE user_id=? AND id=? AND status IN ('queued','paused')",
-            (now_ts(), uid, qid),
-        )
-    audit(uid, "bot_queue_cancel", {"queue_id": qid})
-    await cb.answer("Отменено.")
-
-@router.callback_query(F.data.startswith("queue_move:"))
-async def cb_queue_move(cb: CallbackQuery):
-    uid = cb.from_user.id
-    _, pid, qid, direction = cb.data.split(":")
-    pid = int(pid)
-    qid = int(qid)
-    direction = direction.lower()
-
-    try:
-        with db() as con:
-            if direction == "up":
-                nb = con.execute(
-                    "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' AND id<? ORDER BY id DESC LIMIT 1",
-                    (uid, pid, qid),
-                ).fetchone()
-            else:
-                nb = con.execute(
-                    "SELECT id FROM print_queue WHERE user_id=? AND printer_id=? AND status='queued' AND id>? ORDER BY id ASC LIMIT 1",
-                    (uid, pid, qid),
-                ).fetchone()
-            if not nb:
-                await cb.answer("Перемещение недоступно.")
-                return
-
-            a, b = qid, int(nb["id"])
-            tmp = 10_000_000 + a
-            con.execute("UPDATE print_queue SET id=? WHERE id=?", (tmp, a))
-            con.execute("UPDATE print_queue SET id=? WHERE id=?", (a, b))
-            con.execute("UPDATE print_queue SET id=? WHERE id=?", (b, tmp))
-
-        audit(uid, "bot_queue_move", {"printer_id": pid, "queue_id": qid, "direction": direction})
-        await cb.answer("Перемещено.")
-    except Exception as e:
-        await cb.answer(str(e), show_alert=True)
-
-@router.callback_query(F.data.startswith("sugg_open:"))
-async def cb_sugg_open(cb: CallbackQuery):
-    uid = cb.from_user.id
-    pid = int(cb.data.split(":")[1])
-
-    sugg = build_suggestions(uid, pid)
-    SUGGESTION_CACHE[(uid, pid)] = sugg
-
-    if not sugg:
-        await cb.message.answer("Предложений нет.")
-        await cb.answer()
-        return
-
-    lines = [f"Предложения для принтера #{pid}:"]
-    kb_rows = []
-    for i, s in enumerate(sugg):
-        lines.append(f"{i+1}) {s['label']} — {_fmt_h(int(s['time']))}")
-        kb_rows.append([InlineKeyboardButton(text=f"✅ Применить {i+1}", callback_data=f"sugg_apply:{pid}:{i}")])
-
-    await cb.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
-    await cb.answer()
-
-@router.callback_query(F.data.startswith("sugg_apply:"))
-async def cb_sugg_apply(cb: CallbackQuery):
-    uid = cb.from_user.id
-    _, pid, idx = cb.data.split(":")
-    pid = int(pid)
-    idx = int(idx)
-
-    key = (uid, pid)
-    if key not in SUGGESTION_CACHE:
-        SUGGESTION_CACHE[key] = build_suggestions(uid, pid)
-    sugg = SUGGESTION_CACHE[key]
-
-    if idx < 0 or idx >= len(sugg):
-        await cb.answer("Неверный выбор.", show_alert=True)
-        return
-
-    plan = sugg[idx]
-    created = []
-    with db() as con:
-        for item in plan["items"]:
-            est_total = int(item["estimated_sec"]) * int(item["qty"])
-            con.execute(
-                """
-                INSERT INTO print_queue(user_id, printer_id, model_id, order_id, qty, status, estimated_sec, color)
-                VALUES(?,?,?,?,?,'queued',?,?)
-                """,
-                (uid, pid, int(item["model_id"]), item.get("order_id"), int(item["qty"]), est_total, item.get("color")),
-            )
-            qid = con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-            created.append(int(qid))
-
-    audit(uid, "bot_sugg_apply", {"printer_id": pid, "index": idx, "queue_ids": created})
-    await cb.answer("Добавлено в очередь.")
-    await cb.message.answer("План добавлен в очередь. Вы можете запустить печать из меню принтера.")
-
-@router.callback_query(F.data.startswith("order_close:"))
-async def cb_order_close(cb: CallbackQuery):
-    uid = cb.from_user.id
-    oid = int(cb.data.split(":")[1])
-
-    with db() as con:
-        con.execute("UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=?", (uid, oid))
-    audit(uid, "bot_order_close", {"order_id": oid})
-    await cb.answer("Заказ закрыт.")
-
-@router.callback_query(F.data.startswith("order_inc:"))
-async def cb_order_inc(cb: CallbackQuery):
-    uid = cb.from_user.id
-    _, oid, qty = cb.data.split(":")
-    oid = int(oid)
-    qty = int(qty)
-
-    with db() as con:
-        con.execute("UPDATE orders SET done_qty=done_qty+?, updated_at=datetime('now') WHERE user_id=? AND id=?", (qty, uid, oid))
-        con.execute("UPDATE orders SET status='done', updated_at=datetime('now') WHERE user_id=? AND id=? AND done_qty>=total_qty AND status='open'",
-                    (uid, oid))
-    audit(uid, "bot_order_inc", {"order_id": oid, "qty": qty})
-    await cb.answer("Обновлено.")
-
-# ============================================================
-# FASTAPI STARTUP / SHUTDOWN
-# ============================================================
-_bot_task: Optional[asyncio.Task] = None
-_worker_task: Optional[asyncio.Task] = None
-
-@app.on_event("startup")
-async def on_startup():
-    global _bot_task, _worker_task
-    init_fonts_best_effort()
-    init_db()
-
-    if _worker_task is None:
-        _worker_task = asyncio.create_task(worker_loop())
-
-    # запуск бота как фоновой задачи (если задан токен)
-    if bot is not None and _bot_task is None:
-        _bot_task = asyncio.create_task(dp.start_polling(bot))
-
-    log.info("Startup complete: worker=%s bot=%s", bool(_worker_task), bool(_bot_task))
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    global _bot_task, _worker_task
-    if _worker_task:
-        _worker_task.cancel()
-    if _bot_task:
-        _bot_task.cancel()
-    log.info("Shutdown complete")
-
-# ============================================================
-# OPTIONAL: run via `python bot.py` (starts uvicorn)
-# На Heroku обычно запускают через Procfile: `web: uvicorn bot:app --host 0.0.0.0 --port $PORT`
-# ============================================================
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("bot:app", host="0.0.0.0", port=port, reload=False)
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", sans-serif;
+      background: radial-gradient(circle at top left, #1b1b1b, var(--bg));
+      color: var(--text);
+      padding-bottom: 80px;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(20, 20, 20, 0.92);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(8px);
+    }
+
+    header .title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+    }
+
+    header .user {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(20, 20, 20, 0.96);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      padding: 8px 10px;
+      z-index: 25;
+    }
+
+    nav button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 8px 10px;
+      border-radius: 10px;
+    }
+
+    nav button.active {
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+
+    .page {
+      padding: 20px;
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+
+    .panel h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .card .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #2f2f2f;
+      color: var(--muted);
+    }
+
+    .badge.green { background: rgba(52, 211, 153, 0.15); color: var(--accent); }
+    .badge.blue { background: rgba(96, 165, 250, 0.15); color: var(--accent-2); }
+    .badge.red { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+
+    .btn {
+      background: var(--accent);
+      color: #0c0c0c;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn.secondary {
+      background: #2f2f2f;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn.danger {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .btn.small {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #111;
+      color: var(--text);
+      font-family: inherit;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    .row-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 20px;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal .panel {
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .toast {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      z-index: 100;
+      display: none;
+    }
+
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    @media (min-width: 800px) {
+      .grid.two {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      nav {
+        max-width: 520px;
+        margin: 0 auto;
+        left: 50%;
+        transform: translateX(-50%);
+        border-radius: 16px 16px 0 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">PrintFarm Planner</div>
+    <div class="user" id="user-info">...</div>
+  </header>
+
+  <main>
+    <section class="page active" id="page-printers">
+      <div class="panel">
+        <div class="row">
+          <h3>Принтеры</h3>
+          <button class="btn small" id="btn-add-printer">Добавить</button>
+        </div>
+        <div class="grid two" id="printers-list"></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-tasks">
+      <div class="panel">
+        <div class="row">
+          <h3>Задачи</h3>
+          <div class="row" style="gap: 8px;">
+            <button class="btn small secondary" id="btn-import-orders">Импорт из Google Sheets</button>
+            <button class="btn small" id="btn-generate-tasks">Сгенерировать план</button>
+          </div>
+        </div>
+        <div class="grid" id="tasks-list"></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-products">
+      <div class="panel">
+        <div class="row">
+          <h3>Изделия</h3>
+          <button class="btn small" id="btn-add-product">Добавить</button>
+        </div>
+        <div class="grid two" id="products-list"></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-settings">
+      <div class="panel">
+        <h3>Настройки рабочего времени</h3>
+        <div class="row-split">
+          <div>
+            <label>Начало дня</label>
+            <input type="number" id="work-start" min="0" max="23" />
+          </div>
+          <div>
+            <label>Конец дня</label>
+            <input type="number" id="work-end" min="0" max="23" />
+          </div>
+          <div>
+            <label>Дедлайн (утро)</label>
+            <input type="number" id="deadline-hour" min="0" max="23" />
+          </div>
+          <div>
+            <label>Смена филамента (мин)</label>
+            <input type="number" id="changeover-min" min="0" max="120" />
+          </div>
+        </div>
+        <div class="row-split" style="margin-top: 10px;">
+          <label><input type="checkbox" id="use-night" /> Использовать ночь</label>
+          <label><input type="checkbox" id="minimize-printers" /> Минимизировать принтеры</label>
+        </div>
+        <div style="margin-top: 12px;">
+          <button class="btn" id="btn-save-settings">Сохранить настройки</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Google Sheets</h3>
+        <div class="row-split">
+          <div>
+            <label>ID таблицы</label>
+            <input type="text" id="sheet-id" />
+          </div>
+          <div>
+            <label>Лист</label>
+            <input type="text" id="sheet-name" />
+          </div>
+          <div>
+            <label>Колонка товара</label>
+            <input type="text" id="name-column" />
+          </div>
+          <div>
+            <label>Колонка кол-ва</label>
+            <input type="text" id="qty-column" />
+          </div>
+        </div>
+        <div style="margin-top: 12px;">
+          <button class="btn secondary" id="btn-save-sheet">Сохранить настройки Sheets</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Команда</h3>
+        <div class="row">
+          <div>
+            <div style="color: var(--muted); font-size: 12px;">Код команды</div>
+            <div id="team-code" style="font-size: 18px; font-weight: 700;">—</div>
+          </div>
+          <button class="btn small secondary" id="btn-generate-code">Новый код</button>
+        </div>
+        <div style="margin-top: 8px; color: var(--muted); font-size: 12px;">
+          Ссылка: https://t.me/&lt;botname&gt;?start=<span id="team-code-link">TEAM_CODE</span>
+        </div>
+        <div class="grid" id="team-list" style="margin-top: 12px;"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <button data-tab="printers" class="active">Принтеры</button>
+    <button data-tab="tasks">Задачи</button>
+    <button data-tab="products">Изделия</button>
+    <button data-tab="settings">Настройки</button>
+  </nav>
+
+  <div class="modal" id="modal-printer">
+    <div class="panel">
+      <h3>Новый принтер</h3>
+      <div class="grid">
+        <input type="text" id="printer-name" placeholder="Имя" />
+        <input type="text" id="printer-model" placeholder="Модель" />
+        <input type="text" id="printer-image" placeholder="URL изображения (опционально)" />
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <button class="btn secondary" id="btn-close-printer">Отмена</button>
+        <button class="btn" id="btn-save-printer">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="modal-product">
+    <div class="panel">
+      <h3 id="product-modal-title">Новое изделие</h3>
+      <div class="grid">
+        <input type="text" id="product-name" placeholder="Название" />
+        <input type="text" id="product-desc" placeholder="Описание" />
+        <textarea id="product-variants" placeholder='[{"quantity":1,"time_hours":3,"file":"file.gcode"}]'></textarea>
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <button class="btn secondary" id="btn-close-product">Отмена</button>
+        <button class="btn" id="btn-save-product">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/data.js"></script>
+  <script>
+    const api = window.PrintFarmApi;
+    let currentUser = null;
+    let printers = [];
+    let tasks = [];
+    let products = [];
+    let settings = null;
+    let editingProductId = null;
+
+    const tabs = document.querySelectorAll('nav button');
+    const pages = {
+      printers: document.getElementById('page-printers'),
+      tasks: document.getElementById('page-tasks'),
+      products: document.getElementById('page-products'),
+      settings: document.getElementById('page-settings'),
+    };
+
+    function showToast(text) {
+      const toast = document.getElementById('toast');
+      toast.textContent = text;
+      toast.style.display = 'block';
+      setTimeout(() => (toast.style.display = 'none'), 2500);
+    }
+
+    function switchTab(tab) {
+      tabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
+      Object.keys(pages).forEach((key) => pages[key].classList.toggle('active', key === tab));
+    }
+
+    function statusBadge(status) {
+      if (status === 'printing') return 'badge blue';
+      if (status === 'finished') return 'badge green';
+      if (status === 'error' || status === 'repair') return 'badge red';
+      return 'badge';
+    }
+
+    function renderPrinters() {
+      const container = document.getElementById('printers-list');
+      if (!printers.length) {
+        container.innerHTML = '<div class="empty">Принтеры не добавлены</div>';
+        return;
+      }
+      container.innerHTML = printers.map((p) => {
+        const task = tasks.find((t) => t.id === p.current_task_id);
+        return `
+          <div class="card">
+            <div class="row">
+              <div>
+                <div style="font-weight: 600;">${p.name}</div>
+                <div style="color: var(--muted); font-size: 12px;">${p.model || '—'}</div>
+              </div>
+              <span class="${statusBadge(p.status)}">${p.status}</span>
+            </div>
+            <div style="font-size: 12px; color: var(--muted);">
+              ${task ? `Текущая задача: ${task.product_name} x${task.quantity}` : 'Нет активной задачи'}
+            </div>
+            ${currentUser.role === 'owner' ? `
+              <div class="row">
+                <select data-id="${p.id}" class="printer-status">
+                  ${['idle','printing','paused','repair','error','finished'].map((s) => `<option value="${s}" ${s === p.status ? 'selected' : ''}>${s}</option>`).join('')}
+                </select>
+                <button class="btn small danger" data-remove="${p.id}">Удалить</button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTasks() {
+      const container = document.getElementById('tasks-list');
+      if (!tasks.length) {
+        container.innerHTML = '<div class="empty">Задач нет</div>';
+        return;
+      }
+      const order = { pending: 1, in_progress: 2, done: 3 };
+      const sorted = [...tasks].sort((a, b) => (order[a.status] || 9) - (order[b.status] || 9));
+      container.innerHTML = sorted.map((t) => `
+        <div class="card">
+          <div class="row">
+            <div>
+              <div style="font-weight: 600;">${t.product_name} x${t.quantity}</div>
+              <div style="color: var(--muted); font-size: 12px;">
+                Принтер: ${t.printer_name || '—'} | ${t.slot} | ${t.planned_start_time || '--:--'}-${t.planned_end_time || '--:--'}
+              </div>
+            </div>
+            <span class="${statusBadge(t.status)}">${t.status}</span>
+          </div>
+          <div class="row">
+            ${t.status === 'pending' ? `<button class="btn small" data-start="${t.id}">Начал</button>` : ''}
+            ${t.status === 'in_progress' ? `<button class="btn small" data-complete="${t.id}">Выполнено</button>` : ''}
+            ${currentUser.role === 'owner' ? `<button class="btn small danger" data-delete="${t.id}">Удалить</button>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderProducts() {
+      const container = document.getElementById('products-list');
+      if (!products.length) {
+        container.innerHTML = '<div class="empty">Нет изделий</div>';
+        return;
+      }
+      container.innerHTML = products.map((p) => `
+        <div class="card">
+          <div class="row">
+            <div>
+              <div style="font-weight: 600;">${p.name}</div>
+              <div style="color: var(--muted); font-size: 12px;">${p.description || '—'}</div>
+            </div>
+          </div>
+          <div style="font-size: 12px; color: var(--muted);">Варианты: ${p.variants ? p.variants.length : 0}</div>
+          <div class="row">
+            <button class="btn small secondary" data-edit="${p.id}">Редактировать</button>
+            <button class="btn small danger" data-remove-product="${p.id}">Удалить</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderTeam(members, teamCode) {
+      document.getElementById('team-code').textContent = teamCode || '—';
+      document.getElementById('team-code-link').textContent = teamCode || 'TEAM_CODE';
+      const container = document.getElementById('team-list');
+      if (!members.length) {
+        container.innerHTML = '<div class="empty">Сотрудников нет</div>';
+        return;
+      }
+      container.innerHTML = members.map((m) => `
+        <div class="card">
+          <div class="row">
+            <div>
+              <div style="font-weight: 600;">${m.first_name || '—'}</div>
+              <div style="color: var(--muted); font-size: 12px;">${m.username || '—'} | ${m.id}</div>
+            </div>
+            <button class="btn small danger" data-remove-member="${m.id}">Удалить</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function fillSettingsForm() {
+      if (!settings) return;
+      document.getElementById('work-start').value = settings.work_start_hour ?? 9;
+      document.getElementById('work-end').value = settings.work_end_hour ?? 16;
+      document.getElementById('deadline-hour').value = settings.deadline_hour ?? 8;
+      document.getElementById('changeover-min').value = settings.changeover_minutes ?? 15;
+      document.getElementById('use-night').checked = !!settings.use_night;
+      document.getElementById('minimize-printers').checked = !!settings.minimize_printers;
+      document.getElementById('sheet-id').value = settings.sheet_id || '';
+      document.getElementById('sheet-name').value = settings.sheet_name || 'Sheet1';
+      document.getElementById('name-column').value = settings.name_column || 'B';
+      document.getElementById('qty-column').value = settings.qty_column || 'C';
+    }
+
+    async function refreshAll() {
+      printers = await api.getAllPrinters();
+      tasks = await api.getAllTasks();
+      if (currentUser.role === 'owner') {
+        products = await api.getAllProducts();
+        settings = await api.getSettings();
+      }
+      renderPrinters();
+      renderTasks();
+      if (currentUser.role === 'owner') {
+        renderProducts();
+        fillSettingsForm();
+        const members = await api.getTeamMembers();
+        renderTeam(members, settings.team_code || currentUser.team_code);
+      }
+    }
+
+    function toggleOwnerUI() {
+      const isOwner = currentUser.role === 'owner';
+      document.querySelector('[data-tab="products"]').style.display = isOwner ? 'inline-flex' : 'none';
+      document.querySelector('[data-tab="settings"]').style.display = isOwner ? 'inline-flex' : 'none';
+      document.getElementById('btn-add-printer').style.display = isOwner ? 'inline-flex' : 'none';
+      document.getElementById('btn-import-orders').style.display = isOwner ? 'inline-flex' : 'none';
+      document.getElementById('btn-generate-tasks').style.display = isOwner ? 'inline-flex' : 'none';
+    }
+
+    async function init() {
+      try {
+        currentUser = await api.initApp();
+        document.getElementById('user-info').textContent = `${currentUser.first_name || 'Пользователь'} · ${currentUser.role}`;
+        toggleOwnerUI();
+        await refreshAll();
+      } catch (err) {
+        showToast(err.message || 'Ошибка авторизации');
+      }
+    }
+
+    tabs.forEach((btn) => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    document.getElementById('btn-add-printer').addEventListener('click', () => {
+      document.getElementById('modal-printer').classList.add('active');
+    });
+
+    document.getElementById('btn-close-printer').addEventListener('click', () => {
+      document.getElementById('modal-printer').classList.remove('active');
+    });
+
+    document.getElementById('btn-save-printer').addEventListener('click', async () => {
+      const name = document.getElementById('printer-name').value.trim();
+      if (!name) return showToast('Введите имя');
+      await api.addPrinter(name, document.getElementById('printer-model').value.trim(), document.getElementById('printer-image').value.trim());
+      document.getElementById('modal-printer').classList.remove('active');
+      await refreshAll();
+      showToast('Принтер добавлен');
+    });
+
+    document.getElementById('btn-add-product').addEventListener('click', () => {
+      editingProductId = null;
+      document.getElementById('product-modal-title').textContent = 'Новое изделие';
+      document.getElementById('product-name').value = '';
+      document.getElementById('product-desc').value = '';
+      document.getElementById('product-variants').value = '';
+      document.getElementById('modal-product').classList.add('active');
+    });
+
+    document.getElementById('btn-close-product').addEventListener('click', () => {
+      document.getElementById('modal-product').classList.remove('active');
+    });
+
+    document.getElementById('btn-save-product').addEventListener('click', async () => {
+      const name = document.getElementById('product-name').value.trim();
+      const description = document.getElementById('product-desc').value.trim();
+      let variants = [];
+      try {
+        variants = JSON.parse(document.getElementById('product-variants').value || '[]');
+      } catch (err) {
+        return showToast('Варианты должны быть JSON');
+      }
+      if (!name) return showToast('Введите название');
+      if (editingProductId) {
+        await api.updateProduct(editingProductId, name, description, variants);
+      } else {
+        await api.addProduct(name, description, variants);
+      }
+      document.getElementById('modal-product').classList.remove('active');
+      await refreshAll();
+      showToast('Изделие сохранено');
+    });
+
+    document.getElementById('btn-save-settings').addEventListener('click', async () => {
+      const payload = {
+        work_start_hour: Number(document.getElementById('work-start').value),
+        work_end_hour: Number(document.getElementById('work-end').value),
+        deadline_hour: Number(document.getElementById('deadline-hour').value),
+        changeover_minutes: Number(document.getElementById('changeover-min').value),
+        use_night: document.getElementById('use-night').checked,
+        minimize_printers: document.getElementById('minimize-printers').checked,
+        sheet_id: document.getElementById('sheet-id').value.trim(),
+        sheet_name: document.getElementById('sheet-name').value.trim(),
+        name_column: document.getElementById('name-column').value.trim(),
+        qty_column: document.getElementById('qty-column').value.trim(),
+      };
+      await api.saveSettings(payload);
+      showToast('Настройки сохранены');
+    });
+
+    document.getElementById('btn-save-sheet').addEventListener('click', async () => {
+      await document.getElementById('btn-save-settings').click();
+    });
+
+    document.getElementById('btn-generate-code').addEventListener('click', async () => {
+      const code = await api.generateTeamCode();
+      document.getElementById('team-code').textContent = code;
+      document.getElementById('team-code-link').textContent = code;
+      showToast('Код команды обновлен');
+    });
+
+    document.getElementById('btn-import-orders').addEventListener('click', async () => {
+      const result = await api.importFromGoogleSheets();
+      showToast(`Импорт: ${result.orders.length} позиций`);
+    });
+
+    document.getElementById('btn-generate-tasks').addEventListener('click', async () => {
+      const result = await api.generateTasksWithAlgorithm();
+      showToast(`Создано задач: ${result.summary.tasks_created}`);
+      await refreshAll();
+    });
+
+    document.addEventListener('click', async (event) => {
+      const statusSelect = event.target.closest('.printer-status');
+      if (statusSelect) return;
+      const startBtn = event.target.closest('[data-start]');
+      const completeBtn = event.target.closest('[data-complete]');
+      const deleteBtn = event.target.closest('[data-delete]');
+      const removePrinter = event.target.closest('[data-remove]');
+      const editProduct = event.target.closest('[data-edit]');
+      const removeProduct = event.target.closest('[data-remove-product]');
+      const removeMember = event.target.closest('[data-remove-member]');
+
+      if (startBtn) {
+        await api.startTask(Number(startBtn.dataset.start));
+        await refreshAll();
+      }
+      if (completeBtn) {
+        await api.completeTask(Number(completeBtn.dataset.complete));
+        await refreshAll();
+      }
+      if (deleteBtn) {
+        await api.deleteTask(Number(deleteBtn.dataset.delete));
+        await refreshAll();
+      }
+      if (removePrinter) {
+        await api.removePrinter(Number(removePrinter.dataset.remove));
+        await refreshAll();
+      }
+      if (editProduct) {
+        const product = products.find((p) => p.id === Number(editProduct.dataset.edit));
+        if (!product) return;
+        editingProductId = product.id;
+        document.getElementById('product-modal-title').textContent = 'Редактирование';
+        document.getElementById('product-name').value = product.name || '';
+        document.getElementById('product-desc').value = product.description || '';
+        document.getElementById('product-variants').value = JSON.stringify(product.variants || [], null, 2);
+        document.getElementById('modal-product').classList.add('active');
+      }
+      if (removeProduct) {
+        await api.removeProduct(Number(removeProduct.dataset.removeProduct));
+        await refreshAll();
+      }
+      if (removeMember) {
+        await api.removeTeamMember(Number(removeMember.dataset.removeMember));
+        const members = await api.getTeamMembers();
+        renderTeam(members, settings.team_code || currentUser.team_code);
+      }
+    });
+
+    document.addEventListener('change', async (event) => {
+      const select = event.target.closest('.printer-status');
+      if (!select) return;
+      const printerId = Number(select.dataset.id);
+      await api.updatePrinter(printerId, { status: select.value });
+      showToast('Статус принтера обновлен');
+    });
+
+    init();
+  </script>
+</body>
+</html>
