@@ -1,745 +1,461 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PrintFarm Planner</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #141414;
-      --panel: #1f1f1f;
-      --panel-2: #252525;
-      --accent: #34d399;
-      --accent-2: #60a5fa;
-      --danger: #ef4444;
-      --text: #f5f5f5;
-      --muted: #a1a1aa;
-      --border: #2f2f2f;
-    }
-
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Space Grotesk", sans-serif;
-      background: radial-gradient(circle at top left, #1b1b1b, var(--bg));
-      color: var(--text);
-      padding-bottom: 80px;
-    }
-
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      background: rgba(20, 20, 20, 0.92);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      backdrop-filter: blur(8px);
-    }
-
-    header .title {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 0.4px;
-    }
-
-    header .user {
-      font-size: 12px;
-      color: var(--muted);
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: rgba(20, 20, 20, 0.96);
-      border-top: 1px solid var(--border);
-      display: flex;
-      justify-content: space-around;
-      padding: 8px 10px;
-      z-index: 25;
-    }
-
-    nav button {
-      background: none;
-      border: none;
-      color: var(--muted);
-      font-size: 12px;
-      padding: 8px 10px;
-      border-radius: 10px;
-    }
-
-    nav button.active {
-      color: var(--text);
-      background: var(--panel);
-      border: 1px solid var(--border);
-    }
-
-    .page {
-      padding: 20px;
-      display: none;
-    }
-
-    .page.active {
-      display: block;
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 16px;
-    }
-
-    .panel h3 {
-      margin: 0 0 12px 0;
-      font-size: 16px;
-    }
-
-    .row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .card {
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px;
-      display: grid;
-      gap: 8px;
-    }
-
-    .card .row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .badge {
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 12px;
-      background: #2f2f2f;
-      color: var(--muted);
-    }
-
-    .badge.green { background: rgba(52, 211, 153, 0.15); color: var(--accent); }
-    .badge.blue { background: rgba(96, 165, 250, 0.15); color: var(--accent-2); }
-    .badge.red { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
-
-    .btn {
-      background: var(--accent);
-      color: #0c0c0c;
-      border: none;
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .btn.secondary {
-      background: #2f2f2f;
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-
-    .btn.danger {
-      background: var(--danger);
-      color: #fff;
-    }
-
-    .btn.small {
-      padding: 6px 10px;
-      font-size: 12px;
-    }
-
-    input, select, textarea {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #111;
-      color: var(--text);
-      font-family: inherit;
-    }
-
-    textarea {
-      min-height: 120px;
-      resize: vertical;
-    }
-
-    .row-split {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .modal {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.6);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 50;
-      padding: 20px;
-    }
-
-    .modal.active {
-      display: flex;
-    }
-
-    .modal .panel {
-      width: 100%;
-      max-width: 420px;
-    }
-
-    .toast {
-      position: fixed;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--panel);
-      border: 1px solid var(--border);
-      padding: 10px 16px;
-      border-radius: 999px;
-      font-size: 13px;
-      z-index: 100;
-      display: none;
-    }
-
-    .empty {
-      color: var(--muted);
-      text-align: center;
-      padding: 20px 0;
-    }
-
-    @media (min-width: 800px) {
-      .grid.two {
-        grid-template-columns: repeat(2, 1fr);
-      }
-      nav {
-        max-width: 520px;
-        margin: 0 auto;
-        left: 50%;
-        transform: translateX(-50%);
-        border-radius: 16px 16px 0 0;
-      }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Черно-белый кликер</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+            padding: 20px;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 800px;
+            width: 100%;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            width: 100%;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 400;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+        
+        .description {
+            font-size: 1rem;
+            opacity: 0.7;
+            line-height: 1.5;
+        }
+        
+        .stats-container {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 50px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .stat-box {
+            flex: 1;
+            min-width: 200px;
+            text-align: center;
+            padding: 20px;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .timer {
+            font-size: 3.5rem;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 50px;
+            letter-spacing: 2px;
+            text-align: center;
+            width: 100%;
+        }
+        
+        .click-area {
+            margin: 40px 0;
+        }
+        
+        .click-button {
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            background-color: #fff;
+            border: none;
+            cursor: pointer;
+            transition: all 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            user-select: none;
+        }
+        
+        .click-button:active {
+            transform: scale(0.95);
+            background-color: #f0f0f0;
+        }
+        
+        .click-button:focus {
+            outline: none;
+        }
+        
+        .click-button::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(1.1);
+                opacity: 0;
+            }
+        }
+        
+        .click-count {
+            font-size: 4rem;
+            color: #000;
+            font-weight: bold;
+        }
+        
+        .click-label {
+            font-size: 1rem;
+            margin-top: 15px;
+            text-align: center;
+            opacity: 0.7;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            background-color: transparent;
+            color: #fff;
+            border: 1px solid #fff;
+            padding: 12px 24px;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background-color: #fff;
+            color: #000;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        button:disabled:hover {
+            background-color: transparent;
+            color: #fff;
+        }
+        
+        footer {
+            margin-top: 50px;
+            text-align: center;
+            opacity: 0.5;
+            font-size: 0.9rem;
+            width: 100%;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .timer {
+                font-size: 2.5rem;
+            }
+            
+            .click-button {
+                width: 200px;
+                height: 200px;
+            }
+            
+            .click-count {
+                font-size: 3rem;
+            }
+            
+            .stat-value {
+                font-size: 2rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .stats-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .stat-box {
+                width: 100%;
+            }
+            
+            .timer {
+                font-size: 2rem;
+            }
+            
+            .click-button {
+                width: 180px;
+                height: 180px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <header>
-    <div class="title">PrintFarm Planner</div>
-    <div class="user" id="user-info">...</div>
-  </header>
-
-  <main>
-    <section class="page active" id="page-printers">
-      <div class="panel">
-        <div class="row">
-          <h3>Принтеры</h3>
-          <button class="btn small" id="btn-add-printer">Добавить</button>
+    <div class="container">
+        <header>
+            <h1>ЧЕРНО-БЕЛЫЙ КЛИКЕР</h1>
+            <p class="description">Минималистичный кликер с точным секундомером. Нажмите на круглую кнопку для увеличения счетчика. Секундомер запускается автоматически при загрузке страницы.</p>
+        </header>
+        
+        <div class="timer" id="timer">00:00:00.000</div>
+        
+        <div class="stats-container">
+            <div class="stat-box">
+                <div class="stat-value" id="clickCount">0</div>
+                <div class="stat-label">Кликов</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="clicksPerSecond">0.0</div>
+                <div class="stat-label">Кликов/сек</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="timePerClick">0.0</div>
+                <div class="stat-label">сек/клик</div>
+            </div>
         </div>
-        <div class="grid two" id="printers-list"></div>
-      </div>
-    </section>
-
-    <section class="page" id="page-tasks">
-      <div class="panel">
-        <div class="row">
-          <h3>Задачи</h3>
-          <div class="row" style="gap: 8px;">
-            <button class="btn small secondary" id="btn-import-orders">Импорт из Google Sheets</button>
-            <button class="btn small" id="btn-generate-tasks">Сгенерировать план</button>
-          </div>
+        
+        <div class="click-area">
+            <button class="click-button" id="clickButton">
+                <span class="click-count" id="clickDisplay">0</span>
+            </button>
+            <div class="click-label">Нажмите для увеличения счетчика</div>
         </div>
-        <div class="grid" id="tasks-list"></div>
-      </div>
-    </section>
-
-    <section class="page" id="page-products">
-      <div class="panel">
-        <div class="row">
-          <h3>Изделия</h3>
-          <button class="btn small" id="btn-add-product">Добавить</button>
+        
+        <div class="controls">
+            <button id="resetClicks">Сбросить клики</button>
+            <button id="resetTimer">Сбросить таймер</button>
+            <button id="pauseTimer">Пауза</button>
         </div>
-        <div class="grid two" id="products-list"></div>
-      </div>
-    </section>
-
-    <section class="page" id="page-settings">
-      <div class="panel">
-        <h3>Настройки рабочего времени</h3>
-        <div class="row-split">
-          <div>
-            <label>Начало дня</label>
-            <input type="number" id="work-start" min="0" max="23" />
-          </div>
-          <div>
-            <label>Конец дня</label>
-            <input type="number" id="work-end" min="0" max="23" />
-          </div>
-          <div>
-            <label>Дедлайн (утро)</label>
-            <input type="number" id="deadline-hour" min="0" max="23" />
-          </div>
-          <div>
-            <label>Смена филамента (мин)</label>
-            <input type="number" id="changeover-min" min="0" max="120" />
-          </div>
-        </div>
-        <div class="row-split" style="margin-top: 10px;">
-          <label><input type="checkbox" id="use-night" /> Использовать ночь</label>
-          <label><input type="checkbox" id="minimize-printers" /> Минимизировать принтеры</label>
-        </div>
-        <div style="margin-top: 12px;">
-          <button class="btn" id="btn-save-settings">Сохранить настройки</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3>Google Sheets</h3>
-        <div class="row-split">
-          <div>
-            <label>ID таблицы</label>
-            <input type="text" id="sheet-id" />
-          </div>
-          <div>
-            <label>Лист</label>
-            <input type="text" id="sheet-name" />
-          </div>
-          <div>
-            <label>Колонка товара</label>
-            <input type="text" id="name-column" />
-          </div>
-          <div>
-            <label>Колонка кол-ва</label>
-            <input type="text" id="qty-column" />
-          </div>
-        </div>
-        <div style="margin-top: 12px;">
-          <button class="btn secondary" id="btn-save-sheet">Сохранить настройки Sheets</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3>Команда</h3>
-        <div class="row">
-          <div>
-            <div style="color: var(--muted); font-size: 12px;">Код команды</div>
-            <div id="team-code" style="font-size: 18px; font-weight: 700;">—</div>
-          </div>
-          <button class="btn small secondary" id="btn-generate-code">Новый код</button>
-        </div>
-        <div style="margin-top: 8px; color: var(--muted); font-size: 12px;">
-          Ссылка: https://t.me/&lt;botname&gt;?start=<span id="team-code-link">TEAM_CODE</span>
-        </div>
-        <div class="grid" id="team-list" style="margin-top: 12px;"></div>
-      </div>
-    </section>
-  </main>
-
-  <nav>
-    <button data-tab="printers" class="active">Принтеры</button>
-    <button data-tab="tasks">Задачи</button>
-    <button data-tab="products">Изделия</button>
-    <button data-tab="settings">Настройки</button>
-  </nav>
-
-  <div class="modal" id="modal-printer">
-    <div class="panel">
-      <h3>Новый принтер</h3>
-      <div class="grid">
-        <input type="text" id="printer-name" placeholder="Имя" />
-        <input type="text" id="printer-model" placeholder="Модель" />
-        <input type="text" id="printer-image" placeholder="URL изображения (опционально)" />
-      </div>
-      <div class="row" style="margin-top: 12px;">
-        <button class="btn secondary" id="btn-close-printer">Отмена</button>
-        <button class="btn" id="btn-save-printer">Сохранить</button>
-      </div>
+        
+        <footer>
+            Минималистичный черно-белый кликер с секундомером • Все данные хранятся локально
+        </footer>
     </div>
-  </div>
 
-  <div class="modal" id="modal-product">
-    <div class="panel">
-      <h3 id="product-modal-title">Новое изделие</h3>
-      <div class="grid">
-        <input type="text" id="product-name" placeholder="Название" />
-        <input type="text" id="product-desc" placeholder="Описание" />
-        <textarea id="product-variants" placeholder='[{"quantity":1,"time_hours":3,"file":"file.gcode"}]'></textarea>
-      </div>
-      <div class="row" style="margin-top: 12px;">
-        <button class="btn secondary" id="btn-close-product">Отмена</button>
-        <button class="btn" id="btn-save-product">Сохранить</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="toast" id="toast"></div>
-
-  <script src="/static/data.js"></script>
-  <script>
-    const api = window.PrintFarmApi;
-    let currentUser = null;
-    let printers = [];
-    let tasks = [];
-    let products = [];
-    let settings = null;
-    let editingProductId = null;
-
-    const tabs = document.querySelectorAll('nav button');
-    const pages = {
-      printers: document.getElementById('page-printers'),
-      tasks: document.getElementById('page-tasks'),
-      products: document.getElementById('page-products'),
-      settings: document.getElementById('page-settings'),
-    };
-
-    function showToast(text) {
-      const toast = document.getElementById('toast');
-      toast.textContent = text;
-      toast.style.display = 'block';
-      setTimeout(() => (toast.style.display = 'none'), 2500);
-    }
-
-    function switchTab(tab) {
-      tabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
-      Object.keys(pages).forEach((key) => pages[key].classList.toggle('active', key === tab));
-    }
-
-    function statusBadge(status) {
-      if (status === 'printing') return 'badge blue';
-      if (status === 'finished') return 'badge green';
-      if (status === 'error' || status === 'repair') return 'badge red';
-      return 'badge';
-    }
-
-    function renderPrinters() {
-      const container = document.getElementById('printers-list');
-      if (!printers.length) {
-        container.innerHTML = '<div class="empty">Принтеры не добавлены</div>';
-        return;
-      }
-      container.innerHTML = printers.map((p) => {
-        const task = tasks.find((t) => t.id === p.current_task_id);
-        return `
-          <div class="card">
-            <div class="row">
-              <div>
-                <div style="font-weight: 600;">${p.name}</div>
-                <div style="color: var(--muted); font-size: 12px;">${p.model || '—'}</div>
-              </div>
-              <span class="${statusBadge(p.status)}">${p.status}</span>
-            </div>
-            <div style="font-size: 12px; color: var(--muted);">
-              ${task ? `Текущая задача: ${task.product_name} x${task.quantity}` : 'Нет активной задачи'}
-            </div>
-            ${currentUser.role === 'owner' ? `
-              <div class="row">
-                <select data-id="${p.id}" class="printer-status">
-                  ${['idle','printing','paused','repair','error','finished'].map((s) => `<option value="${s}" ${s === p.status ? 'selected' : ''}>${s}</option>`).join('')}
-                </select>
-                <button class="btn small danger" data-remove="${p.id}">Удалить</button>
-              </div>
-            ` : ''}
-          </div>
-        `;
-      }).join('');
-    }
-
-    function renderTasks() {
-      const container = document.getElementById('tasks-list');
-      if (!tasks.length) {
-        container.innerHTML = '<div class="empty">Задач нет</div>';
-        return;
-      }
-      const order = { pending: 1, in_progress: 2, done: 3 };
-      const sorted = [...tasks].sort((a, b) => (order[a.status] || 9) - (order[b.status] || 9));
-      container.innerHTML = sorted.map((t) => `
-        <div class="card">
-          <div class="row">
-            <div>
-              <div style="font-weight: 600;">${t.product_name} x${t.quantity}</div>
-              <div style="color: var(--muted); font-size: 12px;">
-                Принтер: ${t.printer_name || '—'} | ${t.slot} | ${t.planned_start_time || '--:--'}-${t.planned_end_time || '--:--'}
-              </div>
-            </div>
-            <span class="${statusBadge(t.status)}">${t.status}</span>
-          </div>
-          <div class="row">
-            ${t.status === 'pending' ? `<button class="btn small" data-start="${t.id}">Начал</button>` : ''}
-            ${t.status === 'in_progress' ? `<button class="btn small" data-complete="${t.id}">Выполнено</button>` : ''}
-            ${currentUser.role === 'owner' ? `<button class="btn small danger" data-delete="${t.id}">Удалить</button>` : ''}
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function renderProducts() {
-      const container = document.getElementById('products-list');
-      if (!products.length) {
-        container.innerHTML = '<div class="empty">Нет изделий</div>';
-        return;
-      }
-      container.innerHTML = products.map((p) => `
-        <div class="card">
-          <div class="row">
-            <div>
-              <div style="font-weight: 600;">${p.name}</div>
-              <div style="color: var(--muted); font-size: 12px;">${p.description || '—'}</div>
-            </div>
-          </div>
-          <div style="font-size: 12px; color: var(--muted);">Варианты: ${p.variants ? p.variants.length : 0}</div>
-          <div class="row">
-            <button class="btn small secondary" data-edit="${p.id}">Редактировать</button>
-            <button class="btn small danger" data-remove-product="${p.id}">Удалить</button>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function renderTeam(members, teamCode) {
-      document.getElementById('team-code').textContent = teamCode || '—';
-      document.getElementById('team-code-link').textContent = teamCode || 'TEAM_CODE';
-      const container = document.getElementById('team-list');
-      if (!members.length) {
-        container.innerHTML = '<div class="empty">Сотрудников нет</div>';
-        return;
-      }
-      container.innerHTML = members.map((m) => `
-        <div class="card">
-          <div class="row">
-            <div>
-              <div style="font-weight: 600;">${m.first_name || '—'}</div>
-              <div style="color: var(--muted); font-size: 12px;">${m.username || '—'} | ${m.id}</div>
-            </div>
-            <button class="btn small danger" data-remove-member="${m.id}">Удалить</button>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function fillSettingsForm() {
-      if (!settings) return;
-      document.getElementById('work-start').value = settings.work_start_hour ?? 9;
-      document.getElementById('work-end').value = settings.work_end_hour ?? 16;
-      document.getElementById('deadline-hour').value = settings.deadline_hour ?? 8;
-      document.getElementById('changeover-min').value = settings.changeover_minutes ?? 15;
-      document.getElementById('use-night').checked = !!settings.use_night;
-      document.getElementById('minimize-printers').checked = !!settings.minimize_printers;
-      document.getElementById('sheet-id').value = settings.sheet_id || '';
-      document.getElementById('sheet-name').value = settings.sheet_name || 'Sheet1';
-      document.getElementById('name-column').value = settings.name_column || 'B';
-      document.getElementById('qty-column').value = settings.qty_column || 'C';
-    }
-
-    async function refreshAll() {
-      printers = await api.getAllPrinters();
-      tasks = await api.getAllTasks();
-      if (currentUser.role === 'owner') {
-        products = await api.getAllProducts();
-        settings = await api.getSettings();
-      }
-      renderPrinters();
-      renderTasks();
-      if (currentUser.role === 'owner') {
-        renderProducts();
-        fillSettingsForm();
-        const members = await api.getTeamMembers();
-        renderTeam(members, settings.team_code || currentUser.team_code);
-      }
-    }
-
-    function toggleOwnerUI() {
-      const isOwner = currentUser.role === 'owner';
-      document.querySelector('[data-tab="products"]').style.display = isOwner ? 'inline-flex' : 'none';
-      document.querySelector('[data-tab="settings"]').style.display = isOwner ? 'inline-flex' : 'none';
-      document.getElementById('btn-add-printer').style.display = isOwner ? 'inline-flex' : 'none';
-      document.getElementById('btn-import-orders').style.display = isOwner ? 'inline-flex' : 'none';
-      document.getElementById('btn-generate-tasks').style.display = isOwner ? 'inline-flex' : 'none';
-    }
-
-    async function init() {
-      try {
-        currentUser = await api.initApp();
-        document.getElementById('user-info').textContent = `${currentUser.first_name || 'Пользователь'} · ${currentUser.role}`;
-        toggleOwnerUI();
-        await refreshAll();
-      } catch (err) {
-        showToast(err.message || 'Ошибка авторизации');
-      }
-    }
-
-    tabs.forEach((btn) => {
-      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-    });
-
-    document.getElementById('btn-add-printer').addEventListener('click', () => {
-      document.getElementById('modal-printer').classList.add('active');
-    });
-
-    document.getElementById('btn-close-printer').addEventListener('click', () => {
-      document.getElementById('modal-printer').classList.remove('active');
-    });
-
-    document.getElementById('btn-save-printer').addEventListener('click', async () => {
-      const name = document.getElementById('printer-name').value.trim();
-      if (!name) return showToast('Введите имя');
-      await api.addPrinter(name, document.getElementById('printer-model').value.trim(), document.getElementById('printer-image').value.trim());
-      document.getElementById('modal-printer').classList.remove('active');
-      await refreshAll();
-      showToast('Принтер добавлен');
-    });
-
-    document.getElementById('btn-add-product').addEventListener('click', () => {
-      editingProductId = null;
-      document.getElementById('product-modal-title').textContent = 'Новое изделие';
-      document.getElementById('product-name').value = '';
-      document.getElementById('product-desc').value = '';
-      document.getElementById('product-variants').value = '';
-      document.getElementById('modal-product').classList.add('active');
-    });
-
-    document.getElementById('btn-close-product').addEventListener('click', () => {
-      document.getElementById('modal-product').classList.remove('active');
-    });
-
-    document.getElementById('btn-save-product').addEventListener('click', async () => {
-      const name = document.getElementById('product-name').value.trim();
-      const description = document.getElementById('product-desc').value.trim();
-      let variants = [];
-      try {
-        variants = JSON.parse(document.getElementById('product-variants').value || '[]');
-      } catch (err) {
-        return showToast('Варианты должны быть JSON');
-      }
-      if (!name) return showToast('Введите название');
-      if (editingProductId) {
-        await api.updateProduct(editingProductId, name, description, variants);
-      } else {
-        await api.addProduct(name, description, variants);
-      }
-      document.getElementById('modal-product').classList.remove('active');
-      await refreshAll();
-      showToast('Изделие сохранено');
-    });
-
-    document.getElementById('btn-save-settings').addEventListener('click', async () => {
-      const payload = {
-        work_start_hour: Number(document.getElementById('work-start').value),
-        work_end_hour: Number(document.getElementById('work-end').value),
-        deadline_hour: Number(document.getElementById('deadline-hour').value),
-        changeover_minutes: Number(document.getElementById('changeover-min').value),
-        use_night: document.getElementById('use-night').checked,
-        minimize_printers: document.getElementById('minimize-printers').checked,
-        sheet_id: document.getElementById('sheet-id').value.trim(),
-        sheet_name: document.getElementById('sheet-name').value.trim(),
-        name_column: document.getElementById('name-column').value.trim(),
-        qty_column: document.getElementById('qty-column').value.trim(),
-      };
-      await api.saveSettings(payload);
-      showToast('Настройки сохранены');
-    });
-
-    document.getElementById('btn-save-sheet').addEventListener('click', async () => {
-      await document.getElementById('btn-save-settings').click();
-    });
-
-    document.getElementById('btn-generate-code').addEventListener('click', async () => {
-      const code = await api.generateTeamCode();
-      document.getElementById('team-code').textContent = code;
-      document.getElementById('team-code-link').textContent = code;
-      showToast('Код команды обновлен');
-    });
-
-    document.getElementById('btn-import-orders').addEventListener('click', async () => {
-      const result = await api.importFromGoogleSheets();
-      showToast(`Импорт: ${result.orders.length} позиций`);
-    });
-
-    document.getElementById('btn-generate-tasks').addEventListener('click', async () => {
-      const result = await api.generateTasksWithAlgorithm();
-      showToast(`Создано задач: ${result.summary.tasks_created}`);
-      await refreshAll();
-    });
-
-    document.addEventListener('click', async (event) => {
-      const statusSelect = event.target.closest('.printer-status');
-      if (statusSelect) return;
-      const startBtn = event.target.closest('[data-start]');
-      const completeBtn = event.target.closest('[data-complete]');
-      const deleteBtn = event.target.closest('[data-delete]');
-      const removePrinter = event.target.closest('[data-remove]');
-      const editProduct = event.target.closest('[data-edit]');
-      const removeProduct = event.target.closest('[data-remove-product]');
-      const removeMember = event.target.closest('[data-remove-member]');
-
-      if (startBtn) {
-        await api.startTask(Number(startBtn.dataset.start));
-        await refreshAll();
-      }
-      if (completeBtn) {
-        await api.completeTask(Number(completeBtn.dataset.complete));
-        await refreshAll();
-      }
-      if (deleteBtn) {
-        await api.deleteTask(Number(deleteBtn.dataset.delete));
-        await refreshAll();
-      }
-      if (removePrinter) {
-        await api.removePrinter(Number(removePrinter.dataset.remove));
-        await refreshAll();
-      }
-      if (editProduct) {
-        const product = products.find((p) => p.id === Number(editProduct.dataset.edit));
-        if (!product) return;
-        editingProductId = product.id;
-        document.getElementById('product-modal-title').textContent = 'Редактирование';
-        document.getElementById('product-name').value = product.name || '';
-        document.getElementById('product-desc').value = product.description || '';
-        document.getElementById('product-variants').value = JSON.stringify(product.variants || [], null, 2);
-        document.getElementById('modal-product').classList.add('active');
-      }
-      if (removeProduct) {
-        await api.removeProduct(Number(removeProduct.dataset.removeProduct));
-        await refreshAll();
-      }
-      if (removeMember) {
-        await api.removeTeamMember(Number(removeMember.dataset.removeMember));
-        const members = await api.getTeamMembers();
-        renderTeam(members, settings.team_code || currentUser.team_code);
-      }
-    });
-
-    document.addEventListener('change', async (event) => {
-      const select = event.target.closest('.printer-status');
-      if (!select) return;
-      const printerId = Number(select.dataset.id);
-      await api.updatePrinter(printerId, { status: select.value });
-      showToast('Статус принтера обновлен');
-    });
-
-    init();
-  </script>
+    <script>
+        // Элементы DOM
+        const timerElement = document.getElementById('timer');
+        const clickCountElement = document.getElementById('clickCount');
+        const clickDisplayElement = document.getElementById('clickDisplay');
+        const clicksPerSecondElement = document.getElementById('clicksPerSecond');
+        const timePerClickElement = document.getElementById('timePerClick');
+        const clickButton = document.getElementById('clickButton');
+        const resetClicksButton = document.getElementById('resetClicks');
+        const resetTimerButton = document.getElementById('resetTimer');
+        const pauseTimerButton = document.getElementById('pauseTimer');
+        
+        // Переменные состояния
+        let clickCount = 0;
+        let startTime = Date.now();
+        let timerInterval;
+        let isTimerRunning = true;
+        let lastClickTime = Date.now();
+        
+        // Загрузка данных из localStorage
+        function loadData() {
+            const savedClickCount = localStorage.getItem('clickerClickCount');
+            const savedStartTime = localStorage.getItem('clickerStartTime');
+            
+            if (savedClickCount) {
+                clickCount = parseInt(savedClickCount);
+                clickCountElement.textContent = clickCount;
+                clickDisplayElement.textContent = clickCount;
+            }
+            
+            if (savedStartTime) {
+                startTime = parseInt(savedStartTime);
+            } else {
+                startTime = Date.now();
+                localStorage.setItem('clickerStartTime', startTime.toString());
+            }
+        }
+        
+        // Сохранение данных в localStorage
+        function saveData() {
+            localStorage.setItem('clickerClickCount', clickCount.toString());
+            localStorage.setItem('clickerStartTime', startTime.toString());
+        }
+        
+        // Форматирование времени
+        function formatTime(ms) {
+            const hours = Math.floor(ms / 3600000);
+            const minutes = Math.floor((ms % 3600000) / 60000);
+            const seconds = Math.floor((ms % 60000) / 1000);
+            const milliseconds = ms % 1000;
+            
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+        }
+        
+        // Обновление таймера
+        function updateTimer() {
+            if (!isTimerRunning) return;
+            
+            const currentTime = Date.now();
+            const elapsedTime = currentTime - startTime;
+            timerElement.textContent = formatTime(elapsedTime);
+            
+            // Обновление статистики
+            if (clickCount > 0) {
+                const clicksPerSecond = clickCount / (elapsedTime / 1000);
+                const timePerClick = elapsedTime / clickCount / 1000;
+                
+                clicksPerSecondElement.textContent = clicksPerSecond.toFixed(1);
+                timePerClickElement.textContent = timePerClick.toFixed(1);
+            }
+        }
+        
+        // Обработчик клика
+        function handleClick() {
+            clickCount++;
+            clickCountElement.textContent = clickCount;
+            clickDisplayElement.textContent = clickCount;
+            
+            // Анимация кнопки
+            clickButton.style.transform = 'scale(0.95)';
+            setTimeout(() => {
+                clickButton.style.transform = 'scale(1)';
+            }, 100);
+            
+            // Обновление времени последнего клика
+            lastClickTime = Date.now();
+            
+            // Сохранение данных
+            saveData();
+        }
+        
+        // Сброс счетчика кликов
+        function resetClicks() {
+            clickCount = 0;
+            clickCountElement.textContent = clickCount;
+            clickDisplayElement.textContent = clickCount;
+            clicksPerSecondElement.textContent = '0.0';
+            timePerClickElement.textContent = '0.0';
+            saveData();
+        }
+        
+        // Сброс таймера
+        function resetTimer() {
+            startTime = Date.now();
+            isTimerRunning = true;
+            pauseTimerButton.textContent = 'Пауза';
+            saveData();
+        }
+        
+        // Пауза/возобновление таймера
+        function toggleTimer() {
+            isTimerRunning = !isTimerRunning;
+            pauseTimerButton.textContent = isTimerRunning ? 'Пауза' : 'Возобновить';
+            
+            if (isTimerRunning) {
+                // Корректируем startTime, чтобы таймер продолжил с того же места
+                const currentTime = Date.now();
+                const pausedTime = currentTime - startTime;
+                startTime = currentTime - pausedTime;
+            }
+        }
+        
+        // Инициализация
+        function init() {
+            loadData();
+            
+            // Запуск таймера
+            timerInterval = setInterval(updateTimer, 10);
+            
+            // Обработчики событий
+            clickButton.addEventListener('click', handleClick);
+            resetClicksButton.addEventListener('click', resetClicks);
+            resetTimerButton.addEventListener('click', resetTimer);
+            pauseTimerButton.addEventListener('click', toggleTimer);
+            
+            // Поддержка клавиатуры
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' || e.code === 'Enter') {
+                    e.preventDefault();
+                    handleClick();
+                }
+                
+                // Сброс по R
+                if (e.code === 'KeyR' && e.ctrlKey) {
+                    e.preventDefault();
+                    resetClicks();
+                }
+                
+                // Сброс таймера по T
+                if (e.code === 'KeyT' && e.ctrlKey) {
+                    e.preventDefault();
+                    resetTimer();
+                }
+                
+                // Пауза по P
+                if (e.code === 'KeyP' && e.ctrlKey) {
+                    e.preventDefault();
+                    toggleTimer();
+                }
+            });
+            
+            // Обновляем таймер сразу при загрузке
+            updateTimer();
+        }
+        
+        // Запуск приложения
+        window.addEventListener('DOMContentLoaded', init);
+        
+        // Сохраняем данные перед закрытием страницы
+        window.addEventListener('beforeunload', saveData);
+    </script>
 </body>
 </html>
